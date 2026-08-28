@@ -14,6 +14,7 @@ export type StockMovementType =
   | "SALE_CANCEL"
   | "ADJUSTMENT_PLUS"
   | "ADJUSTMENT_MINUS"
+  | "ADJUSTMENT_SET"
   | "TRANSFER_OUT"
   | "TRANSFER_IN"
   | "RETURN";
@@ -501,6 +502,16 @@ export type Database = {
           p_notes?: string | null;
         };
         Returns: { movement_id: string; stock_before: number; stock_after: number };
+      };
+      set_stock: {
+        Args: {
+          p_location_id: string;
+          p_product_id: string;
+          p_new_quantity: number;
+          p_reason: StockAdjustmentReason;
+          p_notes?: string | null;
+        };
+        Returns: { movement_id: string | null; stock_before: number; stock_after: number; changed: boolean };
       };
       set_product_price: {
         Args: {

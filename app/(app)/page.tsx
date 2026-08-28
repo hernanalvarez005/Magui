@@ -35,6 +35,11 @@ export default async function HomePage() {
     supabase
       .from("product_stock_status")
       .select("sku, name, location_code, quantity, status")
+      // IMPORTANTE: la vista hace CROSS JOIN con todas las sedes; sin este
+      // filtro explícito, una vendedora ve alertas falsas de sedes a las que
+      // ni siquiera tiene acceso (RLS oculta la fila del LEFT JOIN, pero no
+      // la sede "fantasma" del cross join, así que el stock aparece en 0).
+      .in("location_id", profile.locationIds.length > 0 ? profile.locationIds : ["00000000-0000-0000-0000-000000000000"])
       .in("status", ["bajo", "sin_stock"])
       .limit(6),
   ]);

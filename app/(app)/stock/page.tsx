@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AdjustStockDialog } from "@/components/inventory/adjust-stock-dialog";
+import { SetStockDialog } from "@/components/inventory/set-stock-dialog";
 import { TransferStockDialog } from "@/components/inventory/transfer-stock-dialog";
 import { StockFilters } from "@/components/inventory/stock-filters";
 import { StockTable } from "@/components/inventory/stock-table";
@@ -40,9 +41,18 @@ export default async function StockPage(props: PageProps<"/stock">) {
 
   const distinctCategories = Array.from(new Set((categories ?? []).map((c) => c.category!))).sort();
 
+  // IMPORTANTE: filtrar explícitamente por sedes accesibles acá, no confiar
+  // solo en RLS. La vista hace CROSS JOIN con todas las sedes; en un LEFT JOIN
+  // contra inventory_balances, RLS oculta la fila pero no la sede "fantasma"
+  // del cross join, así que sin este filtro una vendedora vería stock 0 (falsa
+  // alerta) de sedes a las que ni siquiera tiene acceso.
+  const accessibleLocationIds =
+    profile.locationIds.length > 0 ? profile.locationIds : ["00000000-0000-0000-0000-000000000000"];
+
   let stockQuery = supabase
     .from("product_stock_status")
-    .select("product_id, sku, name, category, location_id, location_code, quantity, min_stock, status");
+    .select("product_id, sku, name, category, location_id, location_code, quantity, min_stock, status")
+    .in("location_id", accessibleLocationIds);
 
   if (category) stockQuery = stockQuery.eq("category", category);
   if (status) stockQuery = stockQuery.eq("status", status);
@@ -52,7 +62,8 @@ export default async function StockPage(props: PageProps<"/stock">) {
 
   const { data: kitRows } = await supabase
     .from("kit_availability")
-    .select("kit_product_id, kit_sku, kit_name, location_id, location_code, buildable_qty");
+    .select("kit_product_id, kit_sku, kit_name, location_id, location_code, buildable_qty")
+    .in("location_id", accessibleLocationIds);
 
   const { data: products } = await supabase
     .from("products")
@@ -84,6 +95,15 @@ export default async function StockPage(props: PageProps<"/stock">) {
           ) : null}
           {canAdjust ? (
             <AdjustStockDialog
+              locations={locations ?? []}
+              products={products ?? []}
+              defaultLocationId={locations?.[0]?.id}
+            />
+          ) : null}
+          {/* Establecer stock final es EXCLUSIVO de admin — ni siquiera un
+              seller con can_adjust_stock lo ve (distinto de AdjustStockDialog). */}
+          {canManageStock ? (
+            <SetStockDialog
               locations={locations ?? []}
               products={products ?? []}
               defaultLocationId={locations?.[0]?.id}
