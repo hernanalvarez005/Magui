@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Download } from "lucide-react";
 
 import { getCurrentProfile } from "@/lib/auth/get-profile";
 import { createClient } from "@/lib/supabase/server";
@@ -115,13 +116,35 @@ export default async function SalesListPage(props: PageProps<"/ventas">) {
 
   const totalPages = count ? Math.ceil(count / PAGE_SIZE) : 1;
 
+  const exportParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(searchParams)) {
+    if (value === undefined) continue;
+    exportParams.set(key, Array.isArray(value) ? value[0] : value);
+  }
+
   return (
     <div className="flex flex-col gap-5 p-4 md:p-6">
-      <div>
-        <h1 className="text-xl font-semibold">Ventas</h1>
-        <p className="text-sm text-muted-foreground">
-          {profile.role === "admin" ? "Ventas de las sucursales a las que tenés acceso." : "Tus ventas recientes."}
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">Ventas</h1>
+          <p className="text-sm text-muted-foreground">
+            {profile.role === "admin" ? "Ventas de las sucursales a las que tenés acceso." : "Tus ventas recientes."}
+          </p>
+        </div>
+        {profile.role === "admin" ? (
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <a href={`/api/export/ventas?${exportParams.toString()}`}>
+                <Download className="size-4" /> Exportar ventas
+              </a>
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <a href={`/api/export/detalle-ventas?${exportParams.toString()}`}>
+                <Download className="size-4" /> Exportar detalle
+              </a>
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <SalesFilters

@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import { AlertTriangle, Boxes, PackageX } from "lucide-react";
+import { AlertTriangle, Boxes, Download, PackageX } from "lucide-react";
 
 import { getCurrentProfile } from "@/lib/auth/get-profile";
 import { createClient } from "@/lib/supabase/server";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AdjustStockDialog } from "@/components/inventory/adjust-stock-dialog";
@@ -22,6 +23,10 @@ export default async function StockPage(props: PageProps<"/stock">) {
   const rawStatus = typeof searchParams.status === "string" ? searchParams.status : undefined;
   const status = rawStatus === "ok" || rawStatus === "bajo" || rawStatus === "sin_stock" ? rawStatus : undefined;
   const q = typeof searchParams.q === "string" ? searchParams.q : undefined;
+  const exportSearch: Record<string, string> = {
+    ...(category ? { category } : {}),
+    ...(status ? { status } : {}),
+  };
 
   const [{ data: locations }, { data: categories }] = await Promise.all([
     supabase
@@ -69,7 +74,14 @@ export default async function StockPage(props: PageProps<"/stock">) {
           <h1 className="text-xl font-semibold">Stock</h1>
           <p className="text-sm text-muted-foreground">Saldo actual por sucursal.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {canManageStock ? (
+            <Button variant="outline" asChild>
+              <a href={`/api/export/inventario?${new URLSearchParams(exportSearch).toString()}`}>
+                <Download /> Exportar CSV
+              </a>
+            </Button>
+          ) : null}
           {canAdjust ? (
             <AdjustStockDialog
               locations={locations ?? []}

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Download } from "lucide-react";
 
 import { getCurrentProfile } from "@/lib/auth/get-profile";
 import { createClient } from "@/lib/supabase/server";
@@ -100,11 +101,26 @@ export default async function StockMovementsPage(props: PageProps<"/stock/movimi
 
   const totalPages = count ? Math.ceil(count / PAGE_SIZE) : 1;
 
+  const exportParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(searchParams)) {
+    if (key === "page" || value === undefined) continue;
+    exportParams.set(key, Array.isArray(value) ? value[0] : value);
+  }
+
   return (
     <div className="flex flex-col gap-5 p-4 md:p-6">
-      <div>
-        <h1 className="text-xl font-semibold">Movimientos de stock</h1>
-        <p className="text-sm text-muted-foreground">Ledger completo, auditable y con trazabilidad de origen.</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">Movimientos de stock</h1>
+          <p className="text-sm text-muted-foreground">Ledger completo, auditable y con trazabilidad de origen.</p>
+        </div>
+        {profile.role === "admin" ? (
+          <Button variant="outline" size="sm" asChild>
+            <a href={`/api/export/movimientos?${exportParams.toString()}`}>
+              <Download className="size-4" /> Exportar CSV
+            </a>
+          </Button>
+        ) : null}
       </div>
 
       <MovementFilters locations={locations ?? []} products={products ?? []} types={[...MOVEMENT_TYPES]} />
