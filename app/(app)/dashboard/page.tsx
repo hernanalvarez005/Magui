@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AlertTriangle, Globe, Percent, Receipt, ShoppingBag, TrendingUp } from "lucide-react";
+import { AlertTriangle, Globe, PackageSearch, Percent, Receipt, ShoppingBag, TrendingUp } from "lucide-react";
 
 import { getCurrentProfile } from "@/lib/auth/get-profile";
 import { createClient } from "@/lib/supabase/server";
@@ -63,11 +63,18 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
             {from} — {to}
           </p>
         </div>
-        <Button variant="outline" size="sm" asChild>
-          <Link href="/dashboard/comisiones">
-            <Percent /> Comisiones por doctora
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/dashboard/productos">
+              <PackageSearch /> Facturación por producto
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/dashboard/comisiones">
+              <Percent /> Comisiones por doctora
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <DashboardFilters locations={locations ?? []} channels={channels ?? []} />

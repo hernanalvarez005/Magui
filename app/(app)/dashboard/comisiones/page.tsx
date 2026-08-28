@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Download } from "lucide-react";
 
@@ -61,7 +62,7 @@ export default async function CommissionsReportPage(props: PageProps<"/dashboard
         </Button>
       </div>
 
-      <DashboardFilters locations={locations ?? []} channels={[]} />
+      <DashboardFilters locations={locations ?? []} channels={[]} basePath="/dashboard/comisiones" />
 
       {rows.length === 0 ? (
         <EmptyState title="No hay comisiones en este período." />
@@ -75,15 +76,23 @@ export default async function CommissionsReportPage(props: PageProps<"/dashboard
                   <TableHead className="text-right">Cantidad de ventas</TableHead>
                   <TableHead className="text-right">Venta comisionable</TableHead>
                   <TableHead className="text-right">Comisión total</TableHead>
+                  <TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rows.map((r) => (
-                  <TableRow key={r.doctor}>
+                  <TableRow key={r.doctor_id ?? r.doctor}>
                     <TableCell className="font-medium">{r.doctor}</TableCell>
                     <TableCell className="text-right">{r.sales_count}</TableCell>
                     <TableCell className="text-right">{formatCurrency(r.commissionable_revenue)}</TableCell>
                     <TableCell className="text-right font-semibold">{formatCurrency(r.commission)}</TableCell>
+                    <TableCell className="text-right">
+                      {r.doctor_id ? (
+                        <Button variant="ghost" size="sm" asChild>
+                          <Link href={`/dashboard/comisiones/${r.doctor_id}?${exportParams.toString()}`}>Ver detalle</Link>
+                        </Button>
+                      ) : null}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

@@ -381,12 +381,39 @@ export type DashboardReport = {
   top_products_by_units: { product: string; units: number }[];
   top_products_by_revenue: { product: string; revenue: number }[];
   commission_by_doctor: {
+    doctor_id?: string;
     doctor: string;
     sales_count: number;
     commissionable_revenue: number;
     commission: number;
   }[];
   critical_stock_count: number;
+};
+
+export type ProductRevenueRow = {
+  product_id: string;
+  sku: string;
+  name: string;
+  product_type: ProductType;
+  units: number;
+  revenue: number;
+  discount_total: number;
+};
+
+export type ProductRevenueReport = { rows: ProductRevenueRow[] };
+
+export type DoctorSalesDetail = {
+  doctor: { id: string; full_name: string; code: string };
+  summary: { sales_count: number; commissionable_revenue: number; commission_total: number };
+  products: { product_id: string; name: string; units: number; revenue: number }[];
+  sales: {
+    id: string;
+    sale_number: string;
+    sold_at: string;
+    total: number;
+    commission_total: number;
+    location: string;
+  }[];
 };
 
 // ---------------------------------------------------------------------------
@@ -596,6 +623,19 @@ export type Database = {
           p_sales_channel_id?: string | null;
         };
         Returns: DashboardReport;
+      };
+      product_revenue_report: {
+        Args: {
+          p_from: string;
+          p_to: string;
+          p_location_id?: string | null;
+          p_sales_channel_id?: string | null;
+        };
+        Returns: ProductRevenueReport;
+      };
+      doctor_sales_detail: {
+        Args: { p_doctor_id: string; p_from: string; p_to: string; p_location_id?: string | null };
+        Returns: DoctorSalesDetail;
       };
       create_web_order: {
         Args: {

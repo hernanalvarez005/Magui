@@ -43,9 +43,17 @@ const PRESETS = [
 export function DashboardFilters({
   locations,
   channels,
+  basePath = "/dashboard",
 }: {
   locations: { id: string; name: string }[];
   channels: { id: string; name: string }[];
+  /**
+   * A qué ruta navegar al cambiar un filtro. Antes esto estaba hardcodeado a
+   * "/dashboard" — un bug real: en /dashboard/comisiones (y ahora
+   * /dashboard/productos), cambiar la fecha o la sede te mandaba de vuelta al
+   * dashboard principal, perdiendo el reporte que estabas mirando.
+   */
+  basePath?: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -56,7 +64,7 @@ export function DashboardFilters({
       if (value && value !== "all") params.set(key, value);
       else params.delete(key);
     }
-    router.push(`/dashboard?${params.toString()}`);
+    router.push(`${basePath}?${params.toString()}`);
   }
 
   return (
