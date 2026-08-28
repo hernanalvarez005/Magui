@@ -30,9 +30,16 @@ export async function updateSession(request: NextRequest) {
 
   // IMPORTANTE: no eliminar. getUser() revalida el token contra Supabase Auth
   // (a diferencia de getSession(), que solo lee la cookie sin validar).
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Se envuelve en try/catch para que una caída momentánea de Supabase Auth no
+  // tire un 500 en cada request: en ese caso se trata como "sin sesión" (falla
+  // hacia el estado más restrictivo, no hacia acceso libre).
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    user = null;
+  }
 
   const { pathname } = request.nextUrl;
   const isPublicRoute = pathname.startsWith("/login") || pathname.startsWith("/api/integrations");

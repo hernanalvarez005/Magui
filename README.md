@@ -109,9 +109,15 @@ npm run dev
 ## Tests
 
 ```bash
-npm run test        # Vitest: motor de precios (espejo TS), los 12 casos del prompt maestro
-supabase test db     # pgTAP: RPC de negocio (create_sale/cancel_sale) + RLS, contra Supabase local
+npm run test         # Vitest: motor de precios (espejo TS), los 12 casos del prompt maestro
+npm run test:e2e      # Playwright: smoke E2E (login, rutas protegidas) — no requiere Supabase real
+supabase test db      # pgTAP: RPC de negocio (create_sale/cancel_sale) + RLS, contra Supabase local
 ```
+
+El flujo completo de venta (login real → Nueva venta → confirmar → ver detalle) se prueba a mano o
+agregando specs de Playwright adicionales que corran contra `supabase start` + un usuario de prueba;
+los smoke tests de `tests/e2e/` están pensados para poder correr en cualquier CI sin esa
+infraestructura (`proxy.ts` degrada a "sin sesión" si Supabase Auth no responde, en vez de romper).
 
 ## Calidad
 
@@ -121,8 +127,13 @@ npm run typecheck
 npm run build
 ```
 
-CI (`.github/workflows/ci.yml`) corre install → lint → typecheck → test → build en cada Pull
-Request.
+CI (`.github/workflows/ci.yml`) corre en cada Pull Request y push a `main`:
+
+1. **`build-and-test`** (bloqueante): install → lint → typecheck → test (Vitest) → build.
+2. **`e2e-smoke`** (bloqueante): Playwright contra el build, sin Supabase real.
+3. **`db-tests`** (best-effort, `continue-on-error`): levanta Supabase local vía Docker y corre
+   `supabase test db` (pgTAP). No bloquea el merge si la infraestructura de CI no puede levantar
+   Docker — los mismos tests siempre se pueden correr en local.
 
 ## Deployment
 

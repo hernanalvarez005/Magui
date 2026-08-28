@@ -17,6 +17,13 @@ pensadas para reconstruir el esquema completo desde cero, en este orden:
 10. `20260101000010_rls.sql` — Row Level Security + grants.
 11. `20260101000011_indexes.sql` — índices de performance.
 12. `20260101000012_seed_data.sql` — datos iniciales reales (idempotente).
+13. `20260101000013_kit_availability_view.sql` — vistas `kit_availability` y `product_stock_status`.
+14. `20260101000014_audit_triggers.sql` — auditoría automática de UPDATE en tablas editadas directo
+    desde `/admin` (`price_conditions`, `products`, `profiles`, `doctors`).
+15. `20260101000015_dashboard_reports.sql` — `dashboard_report()`, agregación 100% server-side para
+    `/dashboard` y `/dashboard/comisiones`.
+16. `20260101000016_web_orders.sql` — `seller_id` nullable, refactor a `fn_create_sale_core()`
+    compartido, `create_web_order()` (exclusivo de `service_role`) y hardening de `GRANT`/`REVOKE`.
 
 ## Convenciones
 
@@ -78,6 +85,14 @@ se sirven mediante RPC dedicadas que además exigen `is_admin() or profiles.can_
 | `transfer_stock(from, to, items, notes?)` | admin con acceso a ambas sedes | Transferencia atómica (`TRANSFER_OUT` + `TRANSFER_IN`). |
 | `adjust_stock(location, product, delta, reason, notes?)` | admin, o seller con `can_adjust_stock = true` | Ajuste auditado de stock. |
 | `set_product_price(product, condition, amount, valid_from?)` | admin | Cierra vigencia anterior y versiona el precio nuevo. |
+| `dashboard_report(from, to, location?, channel?)` | admin, o seller con `can_view_financial_reports = true` | Agregación server-side para `/dashboard` y `/dashboard/comisiones` (KPIs, series, top productos, comisión por doctora). |
+| `create_web_order(items, location, payment_method, external_source, external_order_id, ...)` | **solo `service_role`** (nunca `authenticated`/`anon`) | Ingesta idempotente de pedidos del canal Web desde `POST /api/integrations/web-orders`. Comparte lógica con `create_sale` vía `fn_create_sale_core()`, pero sin exigir un usuario logueado — `seller_id` queda `null`. |
+
+Postgres otorga `EXECUTE` a `PUBLIC` en toda función nueva por defecto. Los helpers internos
+(`fn_pricing_quote`, `fn_apply_stock_movement`, `fn_next_sale_number`, `fn_create_sale_core`) tienen
+ese privilegio revocado explícitamente — solo son invocables desde las RPC públicas de la tabla de
+arriba (el dueño de la función, que corrió las migrations, conserva su propio privilegio, así que las
+llamadas internas entre funciones siguen funcionando).
 
 ## Reconstrucción del esquema
 
