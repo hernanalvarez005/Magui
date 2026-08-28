@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Loader2, Search, UserPlus } from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
+import { CheckCircle2, Loader2, Search, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,10 @@ export interface CustomerOption {
   whatsapp: string | null;
 }
 
+function normalizeDni(value: string) {
+  return value.replace(/[^0-9]/g, "");
+}
+
 export function CustomerPickerDialog({
   open,
   onOpenChange,
@@ -34,12 +38,72 @@ export function CustomerPickerDialog({
   onOpenChange: (open: boolean) => void;
   onSelect: (customer: CustomerOption | null) => void;
 }) {
+  // Flujo principal: DNI primero, con autobúsqueda debounced. Si aparece un
+  // cliente, se ofrece autocompletar ("Cliente encontrado"). Si no, solo se
+  // pide nombre y WhatsApp (el DNI ya quedó cargado) para no duplicar datos.
+  const [dni, setDni] = useState("");
+  const [dniStatus, setDniStatus] = useState<"idle" | "searching" | "found" | "not_found">("idle");
+  const [found, setFound] = useState<CustomerOption | null>(null);
+  const [nameSearchMode, setNameSearchMode] = useState(false);
+
+  // Búsqueda alternativa por nombre/WhatsApp (para clientes sin DNI a mano).
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CustomerOption[]>([]);
   const [searching, setSearching] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ full_name: "", dni: "", whatsapp: "" });
+
+  const [form, setForm] = useState({ full_name: "", whatsapp: "" });
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (!open) {
+      // Reset al cerrar, para que la próxima apertura arranque limpia.
+      void Promise.resolve().then(() => {
+        setDni("");
+        setDniStatus("idle");
+        setFound(null);
+        setNameSearchMode(false);
+        setQuery("");
+        setResults([]);
+        setForm({ full_name: "", whatsapp: "" });
+      });
+    }
+  }, [open]);
+
+  useEffect(() => {
+    const normalized = normalizeDni(dni);
+    if (normalized.length < 6) {
+      void Promise.resolve().then(() => {
+        setDniStatus("idle");
+        setFound(null);
+      });
+      return;
+    }
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) setDniStatus("searching");
+    });
+    const timeout = setTimeout(async () => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("customers")
+        .select("id, full_name, dni, whatsapp")
+        .eq("active", true)
+        .eq("dni", normalized)
+        .maybeSingle();
+      if (cancelled) return;
+      if (data) {
+        setFound(data);
+        setDniStatus("found");
+      } else {
+        setFound(null);
+        setDniStatus("not_found");
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [dni]);
 
   async function handleSearch(value: string) {
     setQuery(value);
@@ -60,7 +124,12 @@ export function CustomerPickerDialog({
   }
 
   function handleCreate() {
-    const parsed = newCustomerSchema.safeParse(form);
+    if (isPending) return; // evita doble creación por doble click
+    const parsed = newCustomerSchema.safeParse({
+      full_name: form.full_name,
+      dni: normalizeDni(dni),
+      whatsapp: form.whatsapp,
+    });
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? "Datos inválidos.");
       return;
@@ -73,8 +142,6 @@ export function CustomerPickerDialog({
           full_name: parsed.data.full_name,
           dni: parsed.data.dni || null,
           whatsapp: parsed.data.whatsapp || null,
-          email: parsed.data.email || null,
-          notes: parsed.data.notes || null,
         })
         .select("id, full_name, dni, whatsapp")
         .single();
@@ -82,7 +149,7 @@ export function CustomerPickerDialog({
       if (error) {
         toast.error(
           error.message.includes("customers_dni_unique_idx")
-            ? "Ya existe un cliente con ese DNI."
+            ? "Ya existe un cliente con este DNI."
             : "No pudimos crear el cliente."
         );
         return;
@@ -90,54 +157,25 @@ export function CustomerPickerDialog({
 
       onSelect(data);
       onOpenChange(false);
-      setCreating(false);
-      setForm({ full_name: "", dni: "", whatsapp: "" });
     });
   }
+
+  const normalizedDni = normalizeDni(dni);
+  const showCreateForm = dniStatus === "not_found" && normalizedDni.length >= 6;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{creating ? "Nuevo cliente" : "Buscar cliente"}</DialogTitle>
+          <DialogTitle>{nameSearchMode ? "Buscar cliente" : "Cliente"}</DialogTitle>
           <DialogDescription>
-            {creating
-              ? "La venta puede quedar sin cliente si preferís no cargarlo."
-              : "Buscá por nombre, DNI o WhatsApp."}
+            {nameSearchMode
+              ? "Buscá por nombre, DNI o WhatsApp."
+              : "Escribí el DNI: si el cliente ya existe lo autocompletamos."}
           </DialogDescription>
         </DialogHeader>
 
-        {creating ? (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="full_name">Nombre y apellido</Label>
-              <Input
-                id="full_name"
-                value={form.full_name}
-                onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="dni">DNI (opcional)</Label>
-                <Input
-                  id="dni"
-                  inputMode="numeric"
-                  value={form.dni}
-                  onChange={(e) => setForm((f) => ({ ...f, dni: e.target.value }))}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="whatsapp">WhatsApp (opcional)</Label>
-                <Input
-                  id="whatsapp"
-                  value={form.whatsapp}
-                  onChange={(e) => setForm((f) => ({ ...f, whatsapp: e.target.value }))}
-                />
-              </div>
-            </div>
-          </div>
-        ) : (
+        {nameSearchMode ? (
           <div className="flex flex-col gap-3">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -177,34 +215,94 @@ export function CustomerPickerDialog({
               )}
             </div>
 
-            <Button type="button" variant="outline" onClick={() => setCreating(true)}>
-              <UserPlus /> Crear cliente nuevo
+            <Button type="button" variant="outline" onClick={() => setNameSearchMode(false)}>
+              Volver a buscar por DNI
+            </Button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="dni-search">DNI</Label>
+              <div className="relative">
+                <Input
+                  id="dni-search"
+                  autoFocus
+                  inputMode="numeric"
+                  placeholder="Ej: 32123456"
+                  value={dni}
+                  onChange={(e) => setDni(e.target.value)}
+                />
+                {dniStatus === "searching" ? (
+                  <Loader2 className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                ) : null}
+              </div>
+            </div>
+
+            {dniStatus === "found" && found ? (
+              <div className="flex flex-col gap-2 rounded-lg border border-emerald-600/30 bg-emerald-600/10 p-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                  <CheckCircle2 className="size-4" /> Cliente encontrado
+                </div>
+                <p className="text-sm">{found.full_name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {[found.dni ? `DNI ${found.dni}` : null, found.whatsapp].filter(Boolean).join(" · ")}
+                </p>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    onSelect(found);
+                    onOpenChange(false);
+                  }}
+                >
+                  Usar este cliente
+                </Button>
+              </div>
+            ) : null}
+
+            {showCreateForm ? (
+              <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
+                <p className="text-sm text-muted-foreground">
+                  No encontramos ningún cliente con ese DNI. Cargá los datos para crearlo.
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="full_name">Nombre y apellido</Label>
+                  <Input
+                    id="full_name"
+                    value={form.full_name}
+                    onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="whatsapp">WhatsApp (opcional)</Label>
+                  <Input
+                    id="whatsapp"
+                    value={form.whatsapp}
+                    onChange={(e) => setForm((f) => ({ ...f, whatsapp: e.target.value }))}
+                  />
+                </div>
+                <Button type="button" onClick={handleCreate} disabled={isPending}>
+                  {isPending ? <Loader2 className="animate-spin" /> : <UserPlus />}
+                  Crear y seleccionar
+                </Button>
+              </div>
+            ) : null}
+
+            <Button type="button" variant="outline" onClick={() => setNameSearchMode(true)}>
+              <Search /> Buscar por nombre en vez de DNI
             </Button>
           </div>
         )}
 
         <DialogFooter>
-          {creating ? (
-            <>
-              <Button variant="ghost" onClick={() => setCreating(false)}>
-                Volver
-              </Button>
-              <Button onClick={handleCreate} disabled={isPending}>
-                {isPending ? <Loader2 className="animate-spin" /> : null}
-                Crear y seleccionar
-              </Button>
-            </>
-          ) : (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                onSelect(null);
-                onOpenChange(false);
-              }}
-            >
-              Venta sin identificar cliente
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            onClick={() => {
+              onSelect(null);
+              onOpenChange(false);
+            }}
+          >
+            Venta sin identificar cliente
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

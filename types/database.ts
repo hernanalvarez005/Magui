@@ -526,6 +526,10 @@ export type Database = {
         };
         Returns: { movement_id: string | null; stock_before: number; stock_after: number; changed: boolean };
       };
+      deactivate_customer: {
+        Args: { p_customer_id: string };
+        Returns: { customer_id: string; active: boolean };
+      };
       set_product_price: {
         Args: {
           p_product_id: string;

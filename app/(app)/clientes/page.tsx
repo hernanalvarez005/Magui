@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { getCurrentProfile } from "@/lib/auth/get-profile";
 import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/shared/empty-state";
 import { CustomersView } from "@/components/customers/customers-view";
@@ -9,6 +10,8 @@ export const metadata: Metadata = { title: "Clientes" };
 export default async function CustomersPage(props: PageProps<"/clientes">) {
   const searchParams = await props.searchParams;
   const q = typeof searchParams.q === "string" ? searchParams.q : undefined;
+  const showInactive = searchParams.inactive === "1";
+  const profile = await getCurrentProfile();
 
   const supabase = await createClient();
   let query = supabase
@@ -17,6 +20,7 @@ export default async function CustomersPage(props: PageProps<"/clientes">) {
     .order("full_name")
     .limit(200);
 
+  if (!showInactive) query = query.eq("active", true);
   if (q) {
     query = query.or(`full_name.ilike.%${q}%,dni.ilike.%${q}%,whatsapp.ilike.%${q}%`);
   }
@@ -30,7 +34,12 @@ export default async function CustomersPage(props: PageProps<"/clientes">) {
         <p className="text-sm text-muted-foreground">Buscá por nombre, DNI o WhatsApp.</p>
       </div>
 
-      <CustomersView initialCustomers={customers ?? []} initialQuery={q ?? ""} />
+      <CustomersView
+        initialCustomers={customers ?? []}
+        initialQuery={q ?? ""}
+        showInactive={showInactive}
+        isAdmin={profile.role === "admin"}
+      />
 
       {(!customers || customers.length === 0) && q ? (
         <EmptyState title="No encontramos clientes que coincidan con tu búsqueda." />

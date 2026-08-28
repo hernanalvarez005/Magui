@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, Plus, Search } from "lucide-react";
+import { Loader2, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -35,9 +36,13 @@ interface Customer {
 export function CustomersView({
   initialCustomers,
   initialQuery,
+  showInactive,
+  isAdmin,
 }: {
   initialCustomers: Customer[];
   initialQuery: string;
+  showInactive: boolean;
+  isAdmin: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -50,10 +55,17 @@ export function CustomersView({
     router.push(`/clientes?${params.toString()}`);
   }
 
+  function toggleInactive() {
+    const params = new URLSearchParams(searchParams.toString());
+    if (showInactive) params.delete("inactive");
+    else params.set("inactive", "1");
+    router.push(`/clientes?${params.toString()}`);
+  }
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex gap-2">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap gap-2">
+        <div className="relative flex-1 min-w-48">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Nombre, DNI o WhatsApp…"
@@ -66,6 +78,13 @@ export function CustomersView({
           <Plus /> Cliente
         </Button>
       </div>
+
+      {isAdmin ? (
+        <label className="flex w-fit items-center gap-2 text-sm text-muted-foreground">
+          <input type="checkbox" checked={showInactive} onChange={toggleInactive} />
+          Mostrar clientes inactivos
+        </label>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {initialCustomers.map((c) => (
@@ -89,6 +108,7 @@ export function CustomersView({
       {editing ? (
         <CustomerDialog
           customer={editing === "new" ? null : editing}
+          isAdmin={isAdmin}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -102,10 +122,12 @@ export function CustomersView({
 
 function CustomerDialog({
   customer,
+  isAdmin,
   onClose,
   onSaved,
 }: {
   customer: Customer | null;
+  isAdmin: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -118,6 +140,8 @@ function CustomerDialog({
   });
   const [active, setActive] = useState(customer?.active ?? true);
   const [saving, setSaving] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   async function handleSave() {
     const parsed = newCustomerSchema.safeParse(form);
@@ -151,6 +175,48 @@ function CustomerDialog({
 
     toast.success(customer ? "Cliente actualizado." : "Cliente creado.");
     onSaved();
+  }
+
+  async function handleDelete() {
+    if (!customer) return;
+    setDeleting(true);
+    const supabase = createClient();
+    const { error } = await supabase.rpc("deactivate_customer", { p_customer_id: customer.id });
+    setDeleting(false);
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    toast.success("Cliente eliminado. Sus ventas históricas se conservan.");
+    onSaved();
+  }
+
+  if (confirmingDelete && customer) {
+    return (
+      <Dialog open onOpenChange={(o) => !o && setConfirmingDelete(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Eliminar {customer.full_name}</DialogTitle>
+            <DialogDescription>
+              El cliente pasa a inactivo y deja de aparecer en las búsquedas. No se borra ni afecta sus ventas
+              históricas — un administrador puede reactivarlo más adelante. No se puede deshacer desde acá.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirmingDelete(false)}>
+              Volver
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+              {deleting ? <Loader2 className="animate-spin" /> : null}
+              Confirmar eliminación
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
   }
 
   return (
@@ -195,14 +261,25 @@ function CustomerDialog({
           ) : null}
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? <Loader2 className="animate-spin" /> : null}
-            Guardar
-          </Button>
+        <DialogFooter className="sm:justify-between">
+          {isAdmin && customer ? (
+            <Button
+              variant="outline"
+              className="text-destructive hover:text-destructive"
+              onClick={() => setConfirmingDelete(true)}
+            >
+              <Trash2 /> Eliminar cliente
+            </Button>
+          ) : null}
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? <Loader2 className="animate-spin" /> : null}
+              Guardar
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
