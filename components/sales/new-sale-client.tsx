@@ -323,7 +323,16 @@ export function NewSaleClient({
   }
 
   return (
-    <div className="flex flex-col gap-4 pb-4">
+    <div className="flex flex-col gap-4 pb-40 md:pb-8">
+      {/*
+        pb-40 en mobile: el botón flotante del carrito (fixed, bottom-20,
+        alto xl = h-16) ocupa desde los 80px hasta los ~144px del piso de la
+        pantalla. Sin este padding, el final del formulario (notas, venta
+        sin costo) quedaba tapado por ese botón — el contenido técnicamente
+        seguía ahí, pero invisible/inalcanzable sin adivinar que había que
+        seguir haciendo scroll. En md: el carrito pasa a una caja angosta en
+        la esquina (md:right-6 md:w-96), así que alcanza con menos aire.
+      */}
       <div className="sticky top-14 z-20 flex flex-col gap-3 border-b border-border bg-background/95 px-4 pb-3 pt-3 backdrop-blur md:top-16 md:px-6">
         <div className="flex items-center justify-between">
           <div>

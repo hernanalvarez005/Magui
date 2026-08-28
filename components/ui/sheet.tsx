@@ -29,8 +29,13 @@ const sheetVariants = cva(
   {
     variants: {
       side: {
+        // pb-[max(...)]: en un celular con home indicator (iPhone sin
+        // botón físico), el p-6 base (24px) no alcanza para que el último
+        // botón de la sheet no quede pegado/tapado por esa franja del
+        // sistema — se usa env(safe-area-inset-bottom) cuando el
+        // navegador la expone, sin perder el padding de siempre donde no.
         bottom:
-          "inset-x-0 bottom-0 max-h-[90dvh] rounded-t-2xl border-t border-border data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+          "inset-x-0 bottom-0 max-h-[90dvh] rounded-t-2xl border-t border-border pb-[max(1.5rem,env(safe-area-inset-bottom))] data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
         right:
           "inset-y-0 right-0 h-full w-full max-w-sm border-l border-border data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
       },
