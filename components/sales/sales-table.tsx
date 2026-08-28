@@ -59,7 +59,10 @@ export function SalesTable({ rows }: { rows: Row[] }) {
                 <TableCell>{sale.doctor?.full_name ?? "—"}</TableCell>
                 <TableCell className="text-right">{formatCurrency(sale.commission_total)}</TableCell>
                 <TableCell>
-                  <SaleStatusBadge status={sale.status} />
+                  <div className="flex flex-wrap gap-1">
+                    <SaleStatusBadge status={sale.status} />
+                    {sale.is_free_sale ? <Badge variant="secondary">Sin costo</Badge> : null}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

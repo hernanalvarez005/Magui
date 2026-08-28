@@ -26,6 +26,7 @@ export type StockAdjustmentReason =
   | "COUNT_DIFFERENCE"
   | "RETURN"
   | "OTHER";
+export type FreeSaleReason = "GIFT" | "SAMPLE" | "EXCHANGE" | "COURTESY" | "OTHER";
 
 // ---------------------------------------------------------------------------
 // Row shapes (una interfaz por tabla/vista)
@@ -160,7 +161,7 @@ export type SaleRow = {
   sold_at: string;
   location_id: string;
   sales_channel_id: string;
-  seller_id: string;
+  seller_id: string | null;
   customer_id: string | null;
   doctor_id: string | null;
   payment_method_id: string;
@@ -178,6 +179,9 @@ export type SaleRow = {
   cancelled_at: string | null;
   cancelled_by: string | null;
   cancellation_reason: string | null;
+  is_free_sale: boolean;
+  free_sale_reason: FreeSaleReason | null;
+  free_sale_notes: string | null;
 };
 
 export type SaleItemRow = {
@@ -301,16 +305,16 @@ export type PricingLine = {
   line_discount: number;
   line_total: number;
   commissionable: boolean;
-  applied_price_condition_id: string;
+  applied_price_condition_id: string | null;
 };
 
 export type PricingQuoteResult =
   | {
       ok: true;
       error_message: null;
-      applied_price_condition_id: string;
-      applied_price_condition_code: string;
-      applied_price_condition_name: string;
+      applied_price_condition_id: string | null;
+      applied_price_condition_code: string | null;
+      applied_price_condition_name: string | null;
       explanation: string;
       subtotal: number;
       discount_total: number;
@@ -326,8 +330,9 @@ export type CreateSaleResult = {
   subtotal: number;
   discount_total: number;
   commission_total: number;
-  applied_price_condition_name: string;
+  applied_price_condition_name: string | null;
   explanation: string;
+  is_free_sale?: boolean;
   lines: PricingLine[];
 };
 
@@ -462,7 +467,12 @@ export type Database = {
     };
     Functions: {
       quote_sale: {
-        Args: { p_items: PricingItemInput[]; p_payment_method_id: string; p_sold_at?: string };
+        Args: {
+          p_items: PricingItemInput[];
+          p_payment_method_id: string;
+          p_sold_at?: string;
+          p_is_free_sale?: boolean;
+        };
         Returns: PricingQuoteResult;
       };
       create_sale: {
@@ -477,6 +487,9 @@ export type Database = {
           p_external_source?: string | null;
           p_external_order_id?: string | null;
           p_sold_at?: string;
+          p_is_free_sale?: boolean;
+          p_free_sale_reason?: FreeSaleReason | null;
+          p_free_sale_notes?: string | null;
         };
         Returns: CreateSaleResult;
       };

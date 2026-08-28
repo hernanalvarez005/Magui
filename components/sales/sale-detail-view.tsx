@@ -7,7 +7,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { CancelSaleDialog } from "@/components/sales/cancel-sale-dialog";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
-import type { SaleItemRow, SaleRow, StockMovementRow } from "@/types/database";
+import type { FreeSaleReason, SaleItemRow, SaleRow, StockMovementRow } from "@/types/database";
+
+const FREE_SALE_LABELS: Record<FreeSaleReason, string> = {
+  GIFT: "Regalo",
+  SAMPLE: "Muestra",
+  EXCHANGE: "Canje",
+  COURTESY: "Cortesía",
+  OTHER: "Otro",
+};
 
 interface Props {
   sale: SaleRow;
@@ -60,14 +68,23 @@ export function SaleDetailView({
             ) : (
               <Badge variant="success">Confirmada</Badge>
             )}
+            {sale.is_free_sale ? <Badge variant="secondary">Sin costo · {FREE_SALE_LABELS[sale.free_sale_reason ?? "OTHER"]}</Badge> : null}
           </div>
           <p className="text-sm text-muted-foreground">{formatDateTime(sale.sold_at)}</p>
         </div>
         <div className="text-right">
           <p className="text-3xl font-bold">{formatCurrency(sale.total)}</p>
-          <p className="text-sm text-muted-foreground">{paymentMethod?.name}</p>
+          <p className="text-sm text-muted-foreground">
+            {sale.is_free_sale ? `Valor entregado: ${formatCurrency(sale.subtotal)}` : paymentMethod?.name}
+          </p>
         </div>
       </div>
+
+      {sale.is_free_sale && sale.free_sale_notes ? (
+        <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+          {sale.free_sale_notes}
+        </p>
+      ) : null}
 
       <Card>
         <CardContent className="grid grid-cols-2 gap-4 p-5 text-sm sm:grid-cols-3">

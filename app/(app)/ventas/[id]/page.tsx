@@ -30,7 +30,9 @@ export default async function SaleDetailPage(props: PageProps<"/ventas/[id]">) {
     supabase.from("sale_items").select("*").eq("sale_id", id),
     supabase.from("stock_locations").select("code, name").eq("id", sale.location_id).single(),
     supabase.from("sales_channels").select("name").eq("id", sale.sales_channel_id).single(),
-    supabase.from("profiles").select("full_name").eq("id", sale.seller_id).single(),
+    sale.seller_id
+      ? supabase.from("profiles").select("full_name").eq("id", sale.seller_id).maybeSingle()
+      : Promise.resolve({ data: null }),
     sale.customer_id
       ? supabase.from("customers").select("full_name, dni, whatsapp").eq("id", sale.customer_id).maybeSingle()
       : Promise.resolve({ data: null }),

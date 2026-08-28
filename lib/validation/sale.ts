@@ -8,15 +8,25 @@ export const cartItemSchema = z.object({
   quantity: z.number().positive("La cantidad debe ser mayor a cero."),
 });
 
-export const newSaleSchema = z.object({
-  items: z.array(cartItemSchema).min(1, "Agregá al menos un producto."),
-  location_id: z.string().uuid("Seleccioná una sucursal."),
-  sales_channel_id: z.string().uuid("Seleccioná un canal de venta."),
-  payment_method_id: z.string().uuid("Seleccioná un medio de pago."),
-  customer_id: z.string().uuid().nullable().optional(),
-  doctor_id: z.string().uuid().nullable().optional(),
-  notes: z.string().max(500).nullable().optional(),
-});
+export const freeSaleReasonSchema = z.enum(["GIFT", "SAMPLE", "EXCHANGE", "COURTESY", "OTHER"]);
+
+export const newSaleSchema = z
+  .object({
+    items: z.array(cartItemSchema).min(1, "Agregá al menos un producto."),
+    location_id: z.string().uuid("Seleccioná una sucursal."),
+    sales_channel_id: z.string().uuid("Seleccioná un canal de venta."),
+    payment_method_id: z.string().uuid("Seleccioná un medio de pago."),
+    customer_id: z.string().uuid().nullable().optional(),
+    doctor_id: z.string().uuid().nullable().optional(),
+    notes: z.string().max(500).nullable().optional(),
+    is_free_sale: z.boolean().optional().default(false),
+    free_sale_reason: freeSaleReasonSchema.nullable().optional(),
+    free_sale_notes: z.string().max(300).nullable().optional(),
+  })
+  .refine((data) => !data.is_free_sale || !!data.free_sale_reason, {
+    message: "Elegí un motivo para la entrega sin costo.",
+    path: ["free_sale_reason"],
+  });
 
 export type NewSaleInput = z.infer<typeof newSaleSchema>;
 

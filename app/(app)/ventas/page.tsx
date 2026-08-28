@@ -66,7 +66,9 @@ export default async function SalesListPage(props: PageProps<"/ventas">) {
 
   const locationIds = Array.from(new Set((sales ?? []).map((s) => s.location_id)));
   const channelIds = Array.from(new Set((sales ?? []).map((s) => s.sales_channel_id)));
-  const sellerIds = Array.from(new Set((sales ?? []).map((s) => s.seller_id)));
+  const sellerIds = Array.from(
+    new Set((sales ?? []).map((s) => s.seller_id).filter((id): id is string => !!id))
+  );
   const customerIds = Array.from(
     new Set((sales ?? []).map((s) => s.customer_id).filter((id): id is string => !!id))
   );
@@ -108,7 +110,7 @@ export default async function SalesListPage(props: PageProps<"/ventas">) {
     ...s,
     location: locMap.get(s.location_id),
     channel: chMap.get(s.sales_channel_id),
-    seller: sellerMap.get(s.seller_id),
+    seller: s.seller_id ? sellerMap.get(s.seller_id) : undefined,
     customer: s.customer_id ? custMap.get(s.customer_id) : undefined,
     doctor: s.doctor_id ? docMap.get(s.doctor_id) : undefined,
     paymentMethod: pmMap.get(s.payment_method_id),

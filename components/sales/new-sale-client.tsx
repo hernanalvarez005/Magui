@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ClipboardCopy,
   CreditCard,
+  Gift,
   Landmark,
   Loader2,
   Search,
@@ -30,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import {
   Sheet,
   SheetContent,
@@ -80,7 +82,16 @@ const PAYMENT_ICONS: Record<string, React.ElementType> = {
   CASH: Banknote,
   TRANSFER: Landmark,
   CARD_3: CreditCard,
+  CARD_1: CreditCard,
 };
+
+const FREE_SALE_REASONS: { value: "GIFT" | "SAMPLE" | "EXCHANGE" | "COURTESY" | "OTHER"; label: string }[] = [
+  { value: "GIFT", label: "Regalo" },
+  { value: "SAMPLE", label: "Muestra" },
+  { value: "EXCHANGE", label: "Canje" },
+  { value: "COURTESY", label: "Cortesía" },
+  { value: "OTHER", label: "Otro" },
+];
 
 export function NewSaleClient({
   seller,
@@ -111,6 +122,9 @@ export function NewSaleClient({
   const [notes, setNotes] = useState("");
   const [externalSource, setExternalSource] = useState("");
   const [externalOrderId, setExternalOrderId] = useState("");
+  const [isFreeSale, setIsFreeSale] = useState(false);
+  const [freeSaleReason, setFreeSaleReason] = useState<"GIFT" | "SAMPLE" | "EXCHANGE" | "COURTESY" | "OTHER" | "">("");
+  const [freeSaleNotes, setFreeSaleNotes] = useState("");
 
   const [stock, setStock] = useState<Record<string, number>>({});
   const [lowStock, setLowStock] = useState<Record<string, boolean>>({});
@@ -197,6 +211,7 @@ export function NewSaleClient({
       const { data, error } = await supabase.rpc("quote_sale", {
         p_items: cartItems,
         p_payment_method_id: paymentMethodId,
+        p_is_free_sale: isFreeSale,
       });
       if (error) {
         setQuote({ ok: false, error_message: "No pudimos calcular el precio. Probá de nuevo." });
@@ -210,7 +225,7 @@ export function NewSaleClient({
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(cartItems), paymentMethodId]);
+  }, [JSON.stringify(cartItems), paymentMethodId, isFreeSale]);
 
   function setQuantity(productId: string, quantity: number) {
     setCart((prev) => {
@@ -255,6 +270,9 @@ export function NewSaleClient({
       customer_id: customer?.id ?? null,
       doctor_id: doctorId === "none" ? null : doctorId,
       notes: notes.trim() || null,
+      is_free_sale: isFreeSale,
+      free_sale_reason: isFreeSale ? freeSaleReason || null : null,
+      free_sale_notes: isFreeSale ? freeSaleNotes.trim() || null : null,
     };
     const parsed = newSaleSchema.safeParse(payload);
     if (!parsed.success) {
@@ -273,6 +291,9 @@ export function NewSaleClient({
       p_notes: parsed.data.notes,
       p_external_source: isWeb ? externalSource.trim() || null : null,
       p_external_order_id: isWeb ? externalOrderId.trim() || null : null,
+      p_is_free_sale: parsed.data.is_free_sale,
+      p_free_sale_reason: parsed.data.free_sale_reason,
+      p_free_sale_notes: parsed.data.free_sale_notes,
     });
     setConfirming(false);
 
@@ -292,6 +313,9 @@ export function NewSaleClient({
     setNotes("");
     setQuote(null);
     setReceipt(null);
+    setIsFreeSale(false);
+    setFreeSaleReason("");
+    setFreeSaleNotes("");
   }
 
   if (receipt) {
@@ -432,32 +456,74 @@ export function NewSaleClient({
         />
       </div>
 
-      {/* Medio de pago */}
+      {/* Venta sin costo */}
       <div className="flex flex-col gap-2 px-4 md:px-6">
-        <Label className="text-sm">Medio de pago</Label>
-        <div className="grid grid-cols-3 gap-2">
-          {paymentMethods.map((pm) => {
-            const Icon = PAYMENT_ICONS[pm.code] ?? Banknote;
-            const active = pm.id === paymentMethodId;
-            return (
-              <button
-                key={pm.id}
-                type="button"
-                onClick={() => setPaymentMethodId(pm.id)}
-                className={cn(
-                  "flex flex-col items-center gap-1.5 rounded-xl border-2 py-3 text-xs font-medium transition-colors",
-                  active
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground hover:bg-accent"
-                )}
-              >
-                <Icon className="size-5" />
-                {pm.name}
-              </button>
-            );
-          })}
+        <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Gift className="size-4 text-muted-foreground" />
+            <div>
+              <p className="text-sm font-medium">Venta sin costo</p>
+              <p className="text-xs text-muted-foreground">Regalo, muestra, canje o cortesía — total $0</p>
+            </div>
+          </div>
+          <Switch checked={isFreeSale} onCheckedChange={setIsFreeSale} />
         </div>
+
+        {isFreeSale ? (
+          <div className="flex flex-col gap-2 rounded-xl border border-warning/40 bg-warning/10 p-3.5">
+            <Label className="text-sm">Motivo</Label>
+            <Select value={freeSaleReason} onValueChange={(v) => setFreeSaleReason(v as typeof freeSaleReason)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Seleccioná un motivo" />
+              </SelectTrigger>
+              <SelectContent>
+                {FREE_SALE_REASONS.map((r) => (
+                  <SelectItem key={r.value} value={r.value}>
+                    {r.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {freeSaleReason === "OTHER" ? (
+              <Textarea
+                placeholder="Contá el motivo…"
+                value={freeSaleNotes}
+                onChange={(e) => setFreeSaleNotes(e.target.value)}
+                rows={2}
+              />
+            ) : null}
+          </div>
+        ) : null}
       </div>
+
+      {/* Medio de pago (no aplica a venta sin costo) */}
+      {!isFreeSale ? (
+        <div className="flex flex-col gap-2 px-4 md:px-6">
+          <Label className="text-sm">Medio de pago</Label>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {paymentMethods.map((pm) => {
+              const Icon = PAYMENT_ICONS[pm.code] ?? Banknote;
+              const active = pm.id === paymentMethodId;
+              return (
+                <button
+                  key={pm.id}
+                  type="button"
+                  onClick={() => setPaymentMethodId(pm.id)}
+                  className={cn(
+                    "flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-xl border-2 px-2 py-3 text-center text-xs font-medium leading-tight transition-colors",
+                    active
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:bg-accent"
+                  )}
+                >
+                  <Icon className="size-5 shrink-0" />
+                  <span className="text-balance">{pm.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       {/* Carrito flotante */}
       <Sheet open={cartOpen} onOpenChange={setCartOpen}>
@@ -492,15 +558,23 @@ export function NewSaleClient({
             <Button
               size="xl"
               className="w-full"
-              disabled={!online || !quote?.ok || confirming || cartItems.length === 0}
+              disabled={
+                !online ||
+                !quote?.ok ||
+                confirming ||
+                cartItems.length === 0 ||
+                (isFreeSale && !freeSaleReason)
+              }
               onClick={handleConfirm}
             >
               {confirming ? <Loader2 className="animate-spin" /> : null}
               {!online
                 ? "Necesitás conexión para confirmar la venta"
-                : quote?.ok
-                  ? `Confirmar venta · ${formatCurrency(quote.total)}`
-                  : "Confirmar venta"}
+                : isFreeSale
+                  ? "Confirmar entrega sin costo"
+                  : quote?.ok
+                    ? `Confirmar venta · ${formatCurrency(quote.total)}`
+                    : "Confirmar venta"}
             </Button>
           </SheetFooter>
         </SheetContent>
@@ -591,7 +665,9 @@ function ReceiptView({ receipt, onNewSale }: { receipt: CreateSaleResult; onNewS
         <CheckCircle2 className="size-9 text-success" />
       </div>
       <div>
-        <h1 className="text-xl font-semibold">Venta registrada</h1>
+        <h1 className="text-xl font-semibold">
+          {receipt.is_free_sale ? "Entrega sin costo registrada" : "Venta registrada"}
+        </h1>
         <p className="text-sm text-muted-foreground">{receipt.sale_number}</p>
       </div>
 
@@ -608,7 +684,7 @@ function ReceiptView({ receipt, onNewSale }: { receipt: CreateSaleResult; onNewS
         </div>
         <Separator className="my-3" />
         <div className="flex justify-between text-sm text-muted-foreground">
-          <span>{receipt.applied_price_condition_name}</span>
+          <span>{receipt.applied_price_condition_name ?? receipt.explanation}</span>
           <span>-{formatCurrency(receipt.discount_total)}</span>
         </div>
         <div className="mt-1 flex items-center justify-between">
