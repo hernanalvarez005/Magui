@@ -30,7 +30,7 @@ export default async function AdminProductsPage() {
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">
         Un producto inactivo desaparece de Nueva Venta pero conserva todo su historial. Los kits
-        muestran su composición (definida en <code>kit_components</code>, no editable acá).
+        se crean y editan en Kits — acá solo se muestra su composición actual, de referencia.
       </p>
       <ProductsTable
         products={(products ?? []).map((p) => ({
