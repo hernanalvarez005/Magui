@@ -108,7 +108,14 @@ export function SaleDetailView({
           {items.map((item) => (
             <div key={item.id} className="flex items-center justify-between gap-3 px-5 py-3">
               <div>
-                <p className="font-medium">{item.product?.name ?? item.product_id}</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="font-medium">{item.product?.name ?? item.product_id}</p>
+                  {item.applied_promotion_id ? (
+                    <Badge variant="secondary" className="font-normal">
+                      Promo
+                    </Badge>
+                  ) : null}
+                </div>
                 <p className="text-xs text-muted-foreground">
                   {item.quantity} × {formatCurrency(item.sale_unit_price)}
                   {Number(item.line_discount) > 0 ? (

@@ -8,25 +8,38 @@ export const metadata: Metadata = { title: "Promociones" };
 export default async function AdminPromotionsPage() {
   const supabase = await createClient();
 
-  const { data: conditions } = await supabase
-    .from("price_conditions")
-    .select("id, code, name, rule_type, payment_method_id, min_units, discount_percent, priority, combinable, active")
-    .order("priority");
+  const [{ data: promotions }, { data: promotionProducts }, { data: products }] = await Promise.all([
+    supabase
+      .from("promotions")
+      .select(
+        "id, code, name, type, discount_percent, group_size, priority, stackable, active, valid_from, valid_until, notes"
+      )
+      .order("priority"),
+    supabase.from("promotion_products").select("promotion_id, product_id"),
+    supabase.from("products").select("id, sku, name, product_type").eq("active", true).order("name"),
+  ]);
 
-  const { data: paymentMethods } = await supabase.from("payment_methods").select("id, name");
-  const pmMap = new Map((paymentMethods ?? []).map((p) => [p.id, p.name]));
+  const productsByPromotion = new Map<string, string[]>();
+  for (const pp of promotionProducts ?? []) {
+    const list = productsByPromotion.get(pp.promotion_id) ?? [];
+    list.push(pp.product_id);
+    productsByPromotion.set(pp.promotion_id, list);
+  }
 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">
-        Las condiciones no se acumulan: para un carrito dado, gana la de menor número de prioridad
-        cuya regla matchea. Cambiar la prioridad reordena la precedencia sin tocar código.
+        Se evalúan sobre el precio ya resuelto por Condiciones de precio (medio de pago/cantidad),
+        nunca antes. Un producto pertenece a lo sumo a una promoción activa a la vez. Si una
+        promoción no combinable matchea el carrito, gana ella sola; si no, se aplican todas las
+        combinables que matcheen.
       </p>
       <PromotionsTable
-        conditions={(conditions ?? []).map((c) => ({
-          ...c,
-          paymentMethodName: c.payment_method_id ? pmMap.get(c.payment_method_id) : undefined,
+        promotions={(promotions ?? []).map((p) => ({
+          ...p,
+          productIds: productsByPromotion.get(p.id) ?? [],
         }))}
+        products={products ?? []}
       />
     </div>
   );

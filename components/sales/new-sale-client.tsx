@@ -607,17 +607,32 @@ function CartSummary({
       <div className="flex flex-col divide-y divide-border">
         {cartItems.map((item) => {
           const product = products.find((p) => p.id === item.product_id);
-          const line = quote?.ok ? quote.lines.find((l) => l.product_id === item.product_id) : undefined;
+          // Una promoción (3x2, duo%) puede partir un mismo producto en más
+          // de una línea del quote (ej. "2 pagas + 1 gratis") — hay que sumar
+          // todas las que le correspondan, nunca tomar solo la primera.
+          const lines = quote?.ok ? quote.lines.filter((l) => l.product_id === item.product_id) : [];
+          const lineTotal = lines.length > 0 ? lines.reduce((sum, l) => sum + l.line_total, 0) : null;
+          const hasPromo = lines.some((l) => l.applied_promotion_id);
+          const avgUnitPrice = lines.length > 0 ? lineTotal! / item.quantity : null;
           return (
             <div key={item.product_id} className="flex items-center justify-between gap-2 py-2.5">
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{product?.name ?? item.product_id}</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="truncate text-sm font-medium">{product?.name ?? item.product_id}</p>
+                  {hasPromo ? (
+                    <Badge variant="secondary" className="shrink-0 font-normal">
+                      Promo
+                    </Badge>
+                  ) : null}
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  {item.quantity} × {line ? formatCurrency(line.sale_unit_price) : "…"}
+                  {item.quantity} × {avgUnitPrice !== null ? formatCurrency(avgUnitPrice) : "…"}
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold">{line ? formatCurrency(line.line_total) : "…"}</span>
+                <span className="text-sm font-semibold">
+                  {lineTotal !== null ? formatCurrency(lineTotal) : "…"}
+                </span>
                 <Button variant="ghost" size="icon" className="size-7" onClick={() => onRemove(item.product_id)}>
                   <X className="size-4" />
                 </Button>
@@ -673,10 +688,11 @@ function ReceiptView({ receipt, onNewSale }: { receipt: CreateSaleResult; onNewS
 
       <div className="w-full rounded-xl border border-border bg-card p-5 text-left shadow-sm">
         <div className="flex flex-col gap-1.5 text-sm">
-          {receipt.lines.map((line) => (
-            <div key={line.product_id} className="flex justify-between">
+          {receipt.lines.map((line, idx) => (
+            <div key={`${line.product_id}-${idx}`} className="flex justify-between">
               <span>
                 {line.quantity} × {line.name}
+                {line.applied_promotion_id ? " · promo" : ""}
               </span>
               <span className="font-medium">{formatCurrency(line.line_total)}</span>
             </div>

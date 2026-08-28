@@ -27,6 +27,7 @@ export type StockAdjustmentReason =
   | "RETURN"
   | "OTHER";
 export type FreeSaleReason = "GIFT" | "SAMPLE" | "EXCHANGE" | "COURTESY" | "OTHER";
+export type PromotionType = "THREE_FOR_TWO" | "DUO_PERCENT" | "KIT_PERCENT";
 
 // ---------------------------------------------------------------------------
 // Row shapes (una interfaz por tabla/vista)
@@ -196,6 +197,32 @@ export type SaleItemRow = {
   line_total: string;
   applied_price_condition_id: string | null;
   commissionable: boolean;
+  applied_promotion_id: string | null;
+  promotion_discount: string;
+  created_at: string;
+};
+
+export type PromotionRow = {
+  id: string;
+  code: string;
+  name: string;
+  type: PromotionType;
+  discount_percent: string | null;
+  group_size: number;
+  priority: number;
+  stackable: boolean;
+  active: boolean;
+  valid_from: string;
+  valid_until: string | null;
+  notes: string | null;
+  created_at: string;
+  created_by: string | null;
+};
+
+export type PromotionProductRow = {
+  id: string;
+  promotion_id: string;
+  product_id: string;
   created_at: string;
 };
 
@@ -306,6 +333,8 @@ export type PricingLine = {
   line_total: number;
   commissionable: boolean;
   applied_price_condition_id: string | null;
+  applied_promotion_id?: string | null;
+  promotion_discount?: number;
 };
 
 export type PricingQuoteResult =
@@ -428,6 +457,22 @@ export type Database = {
         Update: Partial<ProductPriceRow>;
         Relationships: [];
       };
+      promotions: {
+        Row: PromotionRow;
+        Insert: { code: string; name: string; type: PromotionType } & Partial<PromotionRow>;
+        Update: Partial<PromotionRow>;
+        Relationships: [];
+      };
+      // La composición (qué productos) se edita exclusivamente vía la RPC
+      // set_promotion_products — ver comentario en la migración. Insert/delete
+      // directo queda disponible por RLS pero la UI de admin nunca lo usa
+      // (evita el edge case de conteo a mitad de transacción).
+      promotion_products: {
+        Row: PromotionProductRow;
+        Insert: { promotion_id: string; product_id: string } & Partial<PromotionProductRow>;
+        Update: Partial<PromotionProductRow>;
+        Relationships: [];
+      };
       customers: {
         Row: CustomerRow;
         Insert: { full_name: string } & Partial<CustomerRow>;
@@ -529,6 +574,10 @@ export type Database = {
       deactivate_customer: {
         Args: { p_customer_id: string };
         Returns: { customer_id: string; active: boolean };
+      };
+      set_promotion_products: {
+        Args: { p_promotion_id: string; p_product_ids: string[] };
+        Returns: { promotion_id: string; product_count: number };
       };
       set_product_price: {
         Args: {
