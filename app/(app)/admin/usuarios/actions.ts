@@ -39,6 +39,9 @@ export async function updateUserAction(input: z.infer<typeof updateUserSchema>):
     return { error: "Falta configurar SUPABASE_SERVICE_ROLE_KEY en el servidor." };
   }
 
+  const { data: before } = await serviceClient.auth.admin.getUserById(parsed.data.userId);
+  const previousEmail = before?.user?.email ?? null;
+
   const { error: authError } = await serviceClient.auth.admin.updateUserById(parsed.data.userId, {
     email: parsed.data.email,
     email_confirm: true,
@@ -60,6 +63,20 @@ export async function updateUserAction(input: z.infer<typeof updateUserSchema>):
 
   if (profileError) {
     return { error: "El email se actualizó pero no pudimos guardar el nombre. Volvé a intentar." };
+  }
+
+  // El nombre queda auditado solo por el trigger de `profiles` (trg_audit_profiles).
+  // El email vive en auth.users, fuera del alcance de ese trigger — se deja
+  // constancia acá explícitamente, con quién lo hizo (profile.id, no la
+  // service role key) y el antes/después.
+  if (previousEmail !== parsed.data.email) {
+    await serviceClient.from("audit_logs").insert({
+      user_id: profile.id,
+      action: "update_email",
+      entity_type: "auth.users",
+      entity_id: parsed.data.userId,
+      metadata: { before: previousEmail, after: parsed.data.email },
+    });
   }
 
   return { success: true };
@@ -102,6 +119,18 @@ export async function resetUserPasswordAction(userId: string): Promise<ResetPass
 
   const tempPassword = generateTempPassword();
   const { error } = await serviceClient.auth.admin.updateUserById(parsedId.data, { password: tempPassword });
+
+  if (!error) {
+    // Nunca se guarda la contraseña generada — solo el hecho de que se
+    // restableció, quién lo hizo y a quién.
+    await serviceClient.from("audit_logs").insert({
+      user_id: profile.id,
+      action: "reset_password",
+      entity_type: "auth.users",
+      entity_id: parsedId.data,
+      metadata: {},
+    });
+  }
 
   if (error) {
     return { error: error.message };

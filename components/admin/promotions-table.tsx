@@ -62,6 +62,10 @@ export function PromotionsTable({
   const nameById = new Map(products.map((p) => [p.id, p]));
 
   async function toggleActive(id: string, active: boolean) {
+    if (!active) {
+      const name = promotions.find((p) => p.id === id)?.name ?? "esta promoción";
+      if (!window.confirm(`¿Desactivar "${name}"? Deja de aplicarse en ventas nuevas.`)) return;
+    }
     setSavingId(id);
     const supabase = createClient();
     const { error } = await supabase.from("promotions").update({ active }).eq("id", id);

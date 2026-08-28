@@ -311,7 +311,13 @@ function EditUserDialog({
 
           <div className="flex items-center justify-between">
             <Label>Usuario activo</Label>
-            <Switch checked={active} onCheckedChange={setActive} />
+            <Switch
+              checked={active}
+              onCheckedChange={(v) => {
+                if (!v && !window.confirm(`¿Desactivar a ${user.full_name}? No va a poder iniciar sesión.`)) return;
+                setActive(v);
+              }}
+            />
           </div>
 
           <div className="flex items-center justify-between">

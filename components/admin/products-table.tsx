@@ -132,7 +132,10 @@ export function ProductsTable({ products }: { products: Product[] }) {
                   <Switch
                     checked={p.active}
                     disabled={savingId === p.id}
-                    onCheckedChange={(v) => patch(p.id, { active: v })}
+                    onCheckedChange={(v) => {
+                      if (!v && !window.confirm(`¿Desactivar "${p.name}"? Deja de aparecer en Nueva Venta.`)) return;
+                      patch(p.id, { active: v });
+                    }}
                   />
                 </TableCell>
                 <TableCell className="text-right">

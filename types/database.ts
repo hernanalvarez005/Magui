@@ -525,7 +525,17 @@ export type Database = {
         Update: never;
         Relationships: [];
       };
-      audit_logs: { Row: AuditLogRow; Insert: never; Update: never; Relationships: [] };
+      // Insert real solo desde código server-side con la service role key (ver
+      // app/(app)/admin/usuarios/actions.ts) — no hay policy de INSERT para
+      // `authenticated`, así que un insert del cliente normal sigue fallando
+      // en RLS pase lo que pase este tipo. El resto de las escrituras vienen
+      // de los triggers/RPCs (SECURITY DEFINER, bypassean RLS igual).
+      audit_logs: {
+        Row: AuditLogRow;
+        Insert: { action: string; entity_type: string } & Partial<AuditLogRow>;
+        Update: never;
+        Relationships: [];
+      };
       app_settings: {
         Row: AppSettingsRow;
         Insert: never;

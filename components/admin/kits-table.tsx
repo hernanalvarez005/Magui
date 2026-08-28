@@ -40,6 +40,10 @@ export function KitsTable({ kits, candidates }: { kits: Kit[]; candidates: Compo
   const nameById = useMemo(() => new Map(candidates.map((c) => [c.id, c])), [candidates]);
 
   async function toggleActive(id: string, active: boolean) {
+    if (!active) {
+      const name = kits.find((k) => k.id === id)?.name ?? "este kit";
+      if (!window.confirm(`¿Desactivar "${name}"? Deja de aparecer en Nueva Venta.`)) return;
+    }
     setSavingId(id);
     const supabase = createClient();
     const { error } = await supabase.from("products").update({ active }).eq("id", id);
