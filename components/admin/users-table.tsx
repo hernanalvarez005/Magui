@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Plus, Settings2 } from "lucide-react";
+import { Check, Copy, KeyRound, Loader2, Plus, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -34,12 +35,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/client";
-import { createUserAction } from "@/app/(app)/admin/usuarios/actions";
+import { createUserAction, resetUserPasswordAction, updateUserAction } from "@/app/(app)/admin/usuarios/actions";
 import type { AppRole } from "@/types/database";
 
 interface UserRow {
   id: string;
   full_name: string;
+  email: string;
   role: AppRole;
   active: boolean;
   can_view_financial_reports: boolean;
@@ -79,7 +81,10 @@ export function UsersTable({ users, locations }: { users: UserRow[]; locations: 
           <TableBody>
             {users.map((u) => (
               <TableRow key={u.id}>
-                <TableCell className="font-medium">{u.full_name}</TableCell>
+                <TableCell>
+                  <p className="font-medium">{u.full_name}</p>
+                  {u.email ? <p className="text-xs text-muted-foreground">{u.email}</p> : null}
+                </TableCell>
                 <TableCell>
                   <Badge variant={u.role === "admin" ? "default" : "secondary"}>
                     {u.role === "admin" ? "Admin" : "Vendedora"}
@@ -138,17 +143,32 @@ function EditUserDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const [fullName, setFullName] = useState(user.full_name);
+  const [email, setEmail] = useState(user.email);
   const [role, setRole] = useState<AppRole>(user.role);
   const [active, setActive] = useState(user.active);
   const [canViewFinancial, setCanViewFinancial] = useState(user.can_view_financial_reports);
   const [canAdjustStock, setCanAdjustStock] = useState(user.can_adjust_stock);
   const [locationIds, setLocationIds] = useState<string[]>(user.locationIds);
   const [saving, setSaving] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [confirmingReset, setConfirmingReset] = useState(false);
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   async function handleSave() {
     setSaving(true);
-    const supabase = createClient();
 
+    if (fullName !== user.full_name || email !== user.email) {
+      const result = await updateUserAction({ userId: user.id, fullName, email });
+      if (result.error) {
+        setSaving(false);
+        toast.error(result.error);
+        return;
+      }
+    }
+
+    const supabase = createClient();
     const { error: profileError } = await supabase
       .from("profiles")
       .update({
@@ -182,6 +202,77 @@ function EditUserDialog({
     onSaved();
   }
 
+  async function handleResetPassword() {
+    setResetting(true);
+    const result = await resetUserPasswordAction(user.id);
+    setResetting(false);
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+    setTempPassword(result.tempPassword ?? null);
+  }
+
+  async function copyTempPassword() {
+    if (!tempPassword) return;
+    try {
+      await navigator.clipboard.writeText(tempPassword);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("No pudimos copiar. Copiala manualmente.");
+    }
+  }
+
+  if (confirmingReset) {
+    return (
+      <Dialog open onOpenChange={(o) => !o && setConfirmingReset(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Restablecer contraseña de {user.full_name}</DialogTitle>
+            <DialogDescription>
+              {tempPassword
+                ? "Se generó una contraseña provisoria. Copiala y compartísela por un canal seguro — no queda guardada en ningún lado, esta es la única vez que se muestra."
+                : "Se genera una contraseña provisoria aleatoria y reemplaza la actual. La persona podrá cambiarla después de iniciar sesión."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {tempPassword ? (
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-muted p-3">
+              <code className="flex-1 text-sm font-medium tracking-wide">{tempPassword}</code>
+              <Button type="button" variant="outline" size="icon" onClick={copyTempPassword}>
+                {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+              </Button>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            {tempPassword ? (
+              <Button
+                onClick={() => {
+                  setConfirmingReset(false);
+                  setTempPassword(null);
+                }}
+              >
+                Listo
+              </Button>
+            ) : (
+              <>
+                <Button variant="ghost" onClick={() => setConfirmingReset(false)}>
+                  Volver
+                </Button>
+                <Button variant="destructive" onClick={handleResetPassword} disabled={resetting}>
+                  {resetting ? <Loader2 className="animate-spin" /> : null}
+                  Generar contraseña nueva
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
@@ -190,6 +281,21 @@ function EditUserDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="user-name">Nombre completo</Label>
+              <Input id="user-name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="user-email">Email</Label>
+              <Input id="user-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </div>
+          </div>
+
+          <Button type="button" variant="outline" size="sm" onClick={() => setConfirmingReset(true)}>
+            <KeyRound className="size-3.5" /> Restablecer contraseña
+          </Button>
+
           <div className="flex items-center justify-between">
             <Label>Rol</Label>
             <Select value={role} onValueChange={(v) => setRole(v as AppRole)}>

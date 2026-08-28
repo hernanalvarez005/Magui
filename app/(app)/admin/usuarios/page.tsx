@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { UsersTable } from "@/components/admin/users-table";
 
 export const metadata: Metadata = { title: "Usuarios" };
@@ -24,9 +24,29 @@ export default async function AdminUsersPage() {
     locationsByProfile.set(pl.profile_id, list);
   }
 
+  // El email vive solo en auth.users (profiles nunca tuvo esa columna), así
+  // que hace falta la Auth Admin API para mostrarlo. Si falta la service
+  // role key en este ambiente, la pantalla sigue funcionando sin emails en
+  // vez de romperse — el resto de la administración de usuarios no depende
+  // de esto.
+  const emailById = new Map<string, string>();
+  try {
+    const serviceClient = createServiceRoleClient();
+    const { data } = await serviceClient.auth.admin.listUsers({ perPage: 1000 });
+    for (const u of data?.users ?? []) {
+      if (u.email) emailById.set(u.id, u.email);
+    }
+  } catch {
+    // Sin SUPABASE_SERVICE_ROLE_KEY configurada: se sigue mostrando la lista sin email.
+  }
+
   return (
     <UsersTable
-      users={(profiles ?? []).map((p) => ({ ...p, locationIds: locationsByProfile.get(p.id) ?? [] }))}
+      users={(profiles ?? []).map((p) => ({
+        ...p,
+        email: emailById.get(p.id) ?? "",
+        locationIds: locationsByProfile.get(p.id) ?? [],
+      }))}
       locations={locations ?? []}
     />
   );
