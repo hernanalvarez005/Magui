@@ -520,6 +520,20 @@ export type Database = {
         };
         Returns: DashboardReport;
       };
+      create_web_order: {
+        Args: {
+          p_items: PricingItemInput[];
+          p_location_id: string;
+          p_payment_method_id: string;
+          p_external_source: string;
+          p_external_order_id: string;
+          p_customer_id?: string | null;
+          p_doctor_id?: string | null;
+          p_notes?: string | null;
+          p_sold_at?: string;
+        };
+        Returns: CreateSaleResult;
+      };
     };
     Enums: {
       app_role: AppRole;

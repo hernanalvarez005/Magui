@@ -109,6 +109,8 @@ export function NewSaleClient({
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [doctorId, setDoctorId] = useState<string>("none");
   const [notes, setNotes] = useState("");
+  const [externalSource, setExternalSource] = useState("");
+  const [externalOrderId, setExternalOrderId] = useState("");
 
   const [stock, setStock] = useState<Record<string, number>>({});
   const [lowStock, setLowStock] = useState<Record<string, boolean>>({});
@@ -269,6 +271,8 @@ export function NewSaleClient({
       p_customer_id: parsed.data.customer_id,
       p_doctor_id: parsed.data.doctor_id,
       p_notes: parsed.data.notes,
+      p_external_source: isWeb ? externalSource.trim() || null : null,
+      p_external_order_id: isWeb ? externalOrderId.trim() || null : null,
     });
     setConfirming(false);
 
@@ -404,6 +408,21 @@ export function NewSaleClient({
             </SelectContent>
           </Select>
         </div>
+
+        {isWeb ? (
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              placeholder="Nº de pedido (opcional)"
+              value={externalOrderId}
+              onChange={(e) => setExternalOrderId(e.target.value)}
+            />
+            <Input
+              placeholder="Origen (ej: tiendanube)"
+              value={externalSource}
+              onChange={(e) => setExternalSource(e.target.value)}
+            />
+          </div>
+        ) : null}
 
         <Textarea
           placeholder="Observaciones (opcional)"
