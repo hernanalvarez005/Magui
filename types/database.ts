@@ -330,6 +330,30 @@ export type CreateSaleResult = {
   lines: PricingLine[];
 };
 
+export type DashboardReport = {
+  kpis: {
+    sales_count: number;
+    revenue: number;
+    avg_ticket: number;
+    units_sold: number;
+    web_sales_count: number;
+    commission_total: number;
+  };
+  revenue_by_day: { day: string; revenue: number }[];
+  sales_by_location: { location: string; revenue: number; count: number }[];
+  sales_by_channel: { channel: string; revenue: number; count: number }[];
+  revenue_by_payment_method: { payment_method: string; revenue: number }[];
+  top_products_by_units: { product: string; units: number }[];
+  top_products_by_revenue: { product: string; revenue: number }[];
+  commission_by_doctor: {
+    doctor: string;
+    sales_count: number;
+    commissionable_revenue: number;
+    commission: number;
+  }[];
+  critical_stock_count: number;
+};
+
 // ---------------------------------------------------------------------------
 // Shape que espera @supabase/supabase-js. IMPORTANTE: cada tabla se escribe
 // como un literal plano (no vía un tipo genérico compartido tipo `Table<...>`)
@@ -486,6 +510,15 @@ export type Database = {
           p_valid_from?: string;
         };
         Returns: ProductPriceRow;
+      };
+      dashboard_report: {
+        Args: {
+          p_from: string;
+          p_to: string;
+          p_location_id?: string | null;
+          p_sales_channel_id?: string | null;
+        };
+        Returns: DashboardReport;
       };
     };
     Enums: {
