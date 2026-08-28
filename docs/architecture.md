@@ -315,3 +315,90 @@ docs/
 ## 8. Fases de implementación
 
 Ver checklist en el README. Este documento se actualiza si el esquema cambia.
+
+## 9. Mejoras post-MVP (2026-02)
+
+Segunda ronda de trabajo sobre la app ya en producción, en 12 bloques
+incrementales (migraciones `20260201000001` a `20260201000014`), cada uno
+commiteado por separado:
+
+1. **Depósito + stock manual admin**: nueva `stock_locations` tipo
+   `warehouse` (arquitectura de sedes ya era genérica, no hizo falta
+   migrar nada más); RPC `set_stock` — admin fija el stock final de un
+   producto, la RPC calcula el diff y lo aplica como un movimiento
+   `ADJUSTMENT_SET` auditable (nunca un `UPDATE` ciego sobre
+   `inventory_balances`).
+2. **Venta sin costo + medio de pago CARD_1**: `sales.is_free_sale` +
+   motivo obligatorio (enum `free_sale_reason`), comisión forzada a 0,
+   precio de lista solo informativo. `sale_items` relaja su check de
+   precio a `>= 0` con un trigger que ata cualquier $0 a una venta
+   marcada `is_free_sale` (o, desde el bloque 7, a una unidad gratis de
+   promoción 3x2). `CARD_1` es una `price_condition` más — el precio
+   nunca queda hardcodeado en el frontend.
+3. **Clientes**: DNI normalizado (trigger, solo dígitos) para que el
+   índice único detecte duplicados escritos distinto; fix de un bug real
+   donde la policy de UPDATE solo dejaba editar al creador (RLS filtraba
+   en silencio, sin error); soft-delete exclusivo de admin vía
+   `deactivate_customer`. En Nueva Venta, flujo DNI-primero con
+   autobúsqueda debounced.
+4. **CRUD de productos** (`/admin/productos`): alta/edición completa,
+   nunca hard-delete (no hay policy de DELETE en `products`, ni la hubo).
+5. **CRUD de kits** (`/admin/kits`, nueva ruta): alta/edición del
+   producto-kit + composición dinámica de `kit_components` en el mismo
+   formulario. El stock del kit sigue derivándose de sus componentes
+   (`fn_kit_buildable_qty`), nunca un contador propio.
+6. **Administración de usuarios**: edición de nombre/email (el email
+   vive en `auth.users`, se sincroniza vía Auth Admin API con la service
+   role key) y reset de contraseña (contraseña provisoria generada
+   server-side, nunca persistida, se muestra una sola vez). Bug de
+   seguridad real encontrado y corregido: la policy de auto-edición de
+   `profiles` no restringía columnas — cualquier usuario podía
+   auto-promoverse a admin llamando a la tabla directo. Trigger
+   `fn_prevent_self_privilege_escalation` lo bloquea (exceptúa
+   service_role y sesiones sin JWT de usuario final).
+7. **Motor de promociones** (`/admin/promociones` — el nombre viejo con
+   `price_conditions` se movió a `/admin/condiciones-precio`): tablas
+   nuevas `promotions`/`promotion_products`. Tres tipos — `THREE_FOR_TWO`
+   (generalizado: cada N unidades, la más barata gratis, ranking cruzando
+   productos), `DUO_PERCENT` (% en un par específico) y `KIT_PERCENT` (%
+   en un kit). Se evalúan en `fn_apply_promotions`, después de resolver
+   el precio por `price_conditions`, nunca antes. Un producto pertenece a
+   lo sumo a una promoción activa a la vez — esa regla de diseño le da a
+   `stackable` una semántica simple: una no-combinable que matchea gana
+   sola, si no matchea ninguna se aplican todas las combinables (nunca se
+   pisan). Snapshot en `sale_items.applied_promotion_id` — editar o
+   desactivar una promoción no cambia ventas ya confirmadas.
+8. **Reportes**: `product_revenue_report` (facturación completa por
+   producto/kit, un kit se atribuye a sí mismo, no a sus componentes) y
+   `doctor_sales_detail` (drill-down de "Ventas por médica" — resumen,
+   productos, listado de operaciones — usando `sales.commission_total`
+   ya persistido, nunca recalculado con el % actual de la doctora).
+9. **Fix de bug**: alertas de stock bajo falsas para vendedoras de Sede
+   25 — `product_stock_status`/`kit_availability` son vistas sin filtro
+   de sede propio; un `CROSS JOIN` con sedes inaccesibles + `LEFT JOIN`
+   contra `inventory_balances` (bloqueado por RLS) producía filas
+   fantasma con `quantity = 0`. Se agregó `.in("location_id", ...)` en
+   los 4 call sites que consultan esas vistas desde el cliente.
+10. **Auditoría extendida + confirmaciones**: `fn_audit_table_change`
+    (genérica INSERT/UPDATE/DELETE) cablea auditoría a alta de productos,
+    clientes, `kit_components` y promociones — huecos reales que
+    quedaban tras la auditoría original (solo UPDATE en 4 tablas). Cambio
+    de email y reset de contraseña se auditan explícitamente desde el
+    Server Action (viven en `auth.users`, fuera del alcance de cualquier
+    trigger nuestro). Desactivar un producto/kit/promoción/usuario pide
+    confirmación antes de aplicarse.
+11. **Responsive**: el botón flotante del carrito de Nueva Venta se
+    solapaba con el final del formulario en mobile (padding insuficiente);
+    la variante `bottom` de `Sheet` no tenía en cuenta
+    `env(safe-area-inset-bottom)`; `DialogContent` no tenía
+    `max-h`/`overflow-y-auto` a nivel base — un dialog con contenido
+    largo se salía de la pantalla en vez de scrollear. Los tres, corregidos.
+12. Rename del título visible "Dashboard" a "Magui Rejuve".
+
+Migraciones nuevas de este trabajo, en orden: `20260201000001`
+(Depósito) · `000002`–`000003` (enum + RPC `set_stock`) · `000004`–`000006`
+(venta sin costo) · `000007` (CARD_1) · `000008` (clientes: DNI + fix RLS +
+`deactivate_customer`) · `000009` (fix autoescalada de privilegios) ·
+`000010`–`000012` (promociones: esquema, columnas de snapshot en
+`sale_items`, motor) · `000013` (reportes) · `000014` (auditoría
+extendida).

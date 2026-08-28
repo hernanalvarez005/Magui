@@ -13,7 +13,7 @@ import { RevenueByDayChart } from "@/components/dashboard/revenue-by-day-chart";
 import { formatCurrency, todayInBuenosAires } from "@/lib/utils";
 import type { DashboardReport } from "@/types/database";
 
-export const metadata: Metadata = { title: "Dashboard" };
+export const metadata: Metadata = { title: "Magui Rejuve" };
 
 export default async function DashboardPage(props: PageProps<"/dashboard">) {
   const searchParams = await props.searchParams;
@@ -58,7 +58,7 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
     <div className="flex flex-col gap-5 p-4 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Dashboard</h1>
+          <h1 className="text-xl font-semibold">Magui Rejuve</h1>
           <p className="text-sm text-muted-foreground">
             {from} — {to}
           </p>
