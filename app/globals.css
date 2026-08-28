@@ -1,0 +1,143 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+  Sistema visual Maguirejuve — clínica estética: claro, elegante, mucho aire,
+  tipografía legible. Paleta neutra cálida + acento "clay" (rosado terroso).
+  Pensado para poder reemplazarse por branding real cambiando solo estas variables.
+*/
+:root {
+  --radius: 0.75rem;
+
+  --background: oklch(0.99 0.004 75);
+  --foreground: oklch(0.22 0.02 40);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.02 40);
+
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.02 40);
+
+  --primary: oklch(0.47 0.11 25);
+  --primary-foreground: oklch(0.98 0.004 75);
+
+  --secondary: oklch(0.96 0.015 60);
+  --secondary-foreground: oklch(0.3 0.03 40);
+
+  --muted: oklch(0.96 0.01 60);
+  --muted-foreground: oklch(0.5 0.02 40);
+
+  --accent: oklch(0.93 0.03 40);
+  --accent-foreground: oklch(0.3 0.05 30);
+
+  --destructive: oklch(0.55 0.19 25);
+  --destructive-foreground: oklch(0.98 0.004 75);
+
+  --success: oklch(0.6 0.13 150);
+  --success-foreground: oklch(0.98 0.01 150);
+
+  --warning: oklch(0.75 0.14 75);
+  --warning-foreground: oklch(0.25 0.05 75);
+
+  --border: oklch(0.9 0.01 60);
+  --input: oklch(0.9 0.01 60);
+  --ring: oklch(0.47 0.11 25 / 0.5);
+}
+
+.dark {
+  --background: oklch(0.19 0.015 40);
+  --foreground: oklch(0.95 0.005 75);
+
+  --card: oklch(0.23 0.018 40);
+  --card-foreground: oklch(0.95 0.005 75);
+
+  --popover: oklch(0.23 0.018 40);
+  --popover-foreground: oklch(0.95 0.005 75);
+
+  --primary: oklch(0.72 0.1 30);
+  --primary-foreground: oklch(0.18 0.02 40);
+
+  --secondary: oklch(0.28 0.02 40);
+  --secondary-foreground: oklch(0.95 0.005 75);
+
+  --muted: oklch(0.28 0.02 40);
+  --muted-foreground: oklch(0.68 0.02 60);
+
+  --accent: oklch(0.32 0.03 35);
+  --accent-foreground: oklch(0.95 0.02 60);
+
+  --destructive: oklch(0.6 0.19 25);
+  --destructive-foreground: oklch(0.98 0.004 75);
+
+  --success: oklch(0.65 0.14 150);
+  --success-foreground: oklch(0.15 0.02 150);
+
+  --warning: oklch(0.75 0.14 75);
+  --warning-foreground: oklch(0.2 0.04 75);
+
+  --border: oklch(0.32 0.02 40);
+  --input: oklch(0.32 0.02 40);
+  --ring: oklch(0.72 0.1 30 / 0.5);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 0.35rem);
+  --radius-md: calc(var(--radius) - 0.15rem);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 0.35rem);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+@layer utilities {
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

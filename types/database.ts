@@ -1,0 +1,502 @@
+// Tipos de la base de datos, escritos a mano a partir de supabase/migrations/*.sql
+// (no hay proyecto Supabase en vivo todavía para correr `supabase gen types`).
+// Mantener sincronizado con el esquema. Formato compatible con @supabase/supabase-js v2.
+
+export type AppRole = "admin" | "seller";
+export type StockLocationType = "branch" | "warehouse";
+export type ProductType = "product" | "accessory" | "kit";
+export type PriceRuleType = "BASE" | "PAYMENT_METHOD" | "QUANTITY";
+export type SaleStatus = "draft" | "confirmed" | "cancelled";
+export type StockMovementType =
+  | "INITIAL"
+  | "PURCHASE"
+  | "SALE"
+  | "SALE_CANCEL"
+  | "ADJUSTMENT_PLUS"
+  | "ADJUSTMENT_MINUS"
+  | "TRANSFER_OUT"
+  | "TRANSFER_IN"
+  | "RETURN";
+export type StockTransferStatus = "confirmed" | "cancelled";
+export type StockAdjustmentReason =
+  | "RECEPTION"
+  | "BREAKAGE"
+  | "EXPIRATION"
+  | "COUNT_DIFFERENCE"
+  | "RETURN"
+  | "OTHER";
+
+// ---------------------------------------------------------------------------
+// Row shapes (una interfaz por tabla/vista)
+// ---------------------------------------------------------------------------
+
+export type ProfileRow = {
+  id: string;
+  full_name: string;
+  role: AppRole;
+  active: boolean;
+  can_view_financial_reports: boolean;
+  can_adjust_stock: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProfileLocationRow = {
+  profile_id: string;
+  location_id: string;
+  created_at: string;
+};
+
+export type StockLocationRow = {
+  id: string;
+  code: string;
+  short_code: string;
+  name: string;
+  type: StockLocationType;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SalesChannelRow = {
+  id: string;
+  code: string;
+  name: string;
+  active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PaymentMethodRow = {
+  id: string;
+  code: string;
+  name: string;
+  active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProductRow = {
+  id: string;
+  sku: string;
+  name: string;
+  product_type: ProductType;
+  category: string | null;
+  unit: string;
+  track_stock: boolean;
+  commissionable: boolean;
+  promo_eligible: boolean;
+  default_min_stock: string;
+  active: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KitComponentRow = {
+  id: string;
+  kit_product_id: string;
+  component_product_id: string;
+  quantity: string;
+  created_at: string;
+};
+
+export type PriceConditionRow = {
+  id: string;
+  code: string;
+  name: string;
+  rule_type: PriceRuleType;
+  payment_method_id: string | null;
+  min_units: string | null;
+  discount_percent: string | null;
+  priority: number;
+  combinable: boolean;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProductPriceRow = {
+  id: string;
+  product_id: string;
+  price_condition_id: string;
+  amount: string;
+  valid_from: string;
+  valid_until: string | null;
+  active: boolean;
+  created_at: string;
+  created_by: string | null;
+};
+
+export type CustomerRow = {
+  id: string;
+  dni: string | null;
+  full_name: string;
+  whatsapp: string | null;
+  email: string | null;
+  created_at: string;
+  created_by: string | null;
+  origin_location_id: string | null;
+  active: boolean;
+  notes: string | null;
+};
+
+export type DoctorRow = {
+  id: string;
+  code: string;
+  full_name: string;
+  commission_percent: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SaleRow = {
+  id: string;
+  sale_number: string;
+  sold_at: string;
+  location_id: string;
+  sales_channel_id: string;
+  seller_id: string;
+  customer_id: string | null;
+  doctor_id: string | null;
+  payment_method_id: string;
+  applied_price_condition_id: string | null;
+  subtotal: string;
+  discount_total: string;
+  total: string;
+  commission_total: string;
+  status: SaleStatus;
+  external_source: string | null;
+  external_order_id: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  cancellation_reason: string | null;
+};
+
+export type SaleItemRow = {
+  id: string;
+  sale_id: string;
+  product_id: string;
+  quantity: string;
+  list_unit_price: string;
+  sale_unit_price: string;
+  line_list_total: string;
+  line_discount: string;
+  line_total: string;
+  applied_price_condition_id: string | null;
+  commissionable: boolean;
+  created_at: string;
+};
+
+export type InventoryBalanceRow = {
+  location_id: string;
+  product_id: string;
+  quantity: string;
+  min_stock_override: string | null;
+  updated_at: string;
+};
+
+export type StockMovementRow = {
+  id: string;
+  occurred_at: string;
+  location_id: string;
+  product_id: string;
+  movement_type: StockMovementType;
+  quantity_delta: string;
+  sale_id: string | null;
+  transfer_id: string | null;
+  reference: string | null;
+  reason: StockAdjustmentReason | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+};
+
+export type StockTransferRow = {
+  id: string;
+  transfer_number: string;
+  from_location_id: string;
+  to_location_id: string;
+  status: StockTransferStatus;
+  notes: string | null;
+  created_by: string;
+  created_at: string;
+};
+
+export type StockTransferItemRow = {
+  id: string;
+  transfer_id: string;
+  product_id: string;
+  quantity: string;
+};
+
+export type AuditLogRow = {
+  id: string;
+  user_id: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type AppSettingsRow = {
+  id: number;
+  business_name: string;
+  currency: string;
+  timezone: string;
+  allow_negative_stock: boolean;
+  allow_transfer_overdraft: boolean;
+  default_doctor_commission: string;
+  low_stock_enabled: boolean;
+  updated_at: string;
+  updated_by: string | null;
+};
+
+export type KitAvailabilityRow = {
+  kit_product_id: string;
+  kit_sku: string;
+  kit_name: string;
+  location_id: string;
+  location_code: string;
+  buildable_qty: number;
+};
+
+export type ProductStockStatusRow = {
+  product_id: string;
+  sku: string;
+  name: string;
+  category: string | null;
+  location_id: string;
+  location_code: string;
+  quantity: string;
+  min_stock: string;
+  status: "ok" | "bajo" | "sin_stock";
+};
+
+// ---------------------------------------------------------------------------
+// RPC input/output
+// ---------------------------------------------------------------------------
+
+export type PricingItemInput = {
+  product_id: string;
+  quantity: number;
+};
+
+export type PricingLine = {
+  product_id: string;
+  sku: string;
+  name: string;
+  quantity: number;
+  list_unit_price: number;
+  sale_unit_price: number;
+  line_list_total: number;
+  line_discount: number;
+  line_total: number;
+  commissionable: boolean;
+  applied_price_condition_id: string;
+};
+
+export type PricingQuoteResult =
+  | {
+      ok: true;
+      error_message: null;
+      applied_price_condition_id: string;
+      applied_price_condition_code: string;
+      applied_price_condition_name: string;
+      explanation: string;
+      subtotal: number;
+      discount_total: number;
+      total: number;
+      lines: PricingLine[];
+    }
+  | { ok: false; error_message: string };
+
+export type CreateSaleResult = {
+  sale_id: string;
+  sale_number: string;
+  total: number;
+  subtotal: number;
+  discount_total: number;
+  commission_total: number;
+  applied_price_condition_name: string;
+  explanation: string;
+  lines: PricingLine[];
+};
+
+// ---------------------------------------------------------------------------
+// Shape que espera @supabase/supabase-js. IMPORTANTE: cada tabla se escribe
+// como un literal plano (no vía un tipo genérico compartido tipo `Table<...>`)
+// porque el parser de select-strings de postgrest-js no resuelve bien tipos
+// construidos a partir de alias genéricos — con literales planos, igual que
+// los que emite `supabase gen types`, funciona correctamente.
+// ---------------------------------------------------------------------------
+
+export type Database = {
+  public: {
+    Tables: {
+      profiles: {
+        Row: ProfileRow;
+        Insert: { id: string } & Partial<ProfileRow>;
+        Update: Partial<ProfileRow>;
+        Relationships: [];
+      };
+      profile_locations: {
+        Row: ProfileLocationRow;
+        Insert: { profile_id: string; location_id: string } & Partial<ProfileLocationRow>;
+        Update: Partial<ProfileLocationRow>;
+        Relationships: [];
+      };
+      stock_locations: {
+        Row: StockLocationRow;
+        Insert: { code: string; short_code: string; name: string } & Partial<StockLocationRow>;
+        Update: Partial<StockLocationRow>;
+        Relationships: [];
+      };
+      sales_channels: {
+        Row: SalesChannelRow;
+        Insert: { code: string; name: string } & Partial<SalesChannelRow>;
+        Update: Partial<SalesChannelRow>;
+        Relationships: [];
+      };
+      payment_methods: {
+        Row: PaymentMethodRow;
+        Insert: { code: string; name: string } & Partial<PaymentMethodRow>;
+        Update: Partial<PaymentMethodRow>;
+        Relationships: [];
+      };
+      products: {
+        Row: ProductRow;
+        Insert: { sku: string; name: string } & Partial<ProductRow>;
+        Update: Partial<ProductRow>;
+        Relationships: [];
+      };
+      kit_components: {
+        Row: KitComponentRow;
+        Insert: { kit_product_id: string; component_product_id: string; quantity: string } &
+          Partial<KitComponentRow>;
+        Update: Partial<KitComponentRow>;
+        Relationships: [];
+      };
+      price_conditions: {
+        Row: PriceConditionRow;
+        Insert: { code: string; name: string; rule_type: PriceRuleType; priority: number } &
+          Partial<PriceConditionRow>;
+        Update: Partial<PriceConditionRow>;
+        Relationships: [];
+      };
+      product_prices: {
+        Row: ProductPriceRow;
+        Insert: { product_id: string; price_condition_id: string; amount: string } &
+          Partial<ProductPriceRow>;
+        Update: Partial<ProductPriceRow>;
+        Relationships: [];
+      };
+      customers: {
+        Row: CustomerRow;
+        Insert: { full_name: string } & Partial<CustomerRow>;
+        Update: Partial<CustomerRow>;
+        Relationships: [];
+      };
+      doctors: {
+        Row: DoctorRow;
+        Insert: { code: string; full_name: string } & Partial<DoctorRow>;
+        Update: Partial<DoctorRow>;
+        Relationships: [];
+      };
+      // Las siguientes tablas se escriben EXCLUSIVAMENTE vía RPC (create_sale,
+      // cancel_sale, transfer_stock, adjust_stock): sin insert/update directo.
+      sales: { Row: SaleRow; Insert: never; Update: never; Relationships: [] };
+      sale_items: { Row: SaleItemRow; Insert: never; Update: never; Relationships: [] };
+      inventory_balances: { Row: InventoryBalanceRow; Insert: never; Update: never; Relationships: [] };
+      stock_movements: { Row: StockMovementRow; Insert: never; Update: never; Relationships: [] };
+      stock_transfers: { Row: StockTransferRow; Insert: never; Update: never; Relationships: [] };
+      stock_transfer_items: {
+        Row: StockTransferItemRow;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      audit_logs: { Row: AuditLogRow; Insert: never; Update: never; Relationships: [] };
+      app_settings: {
+        Row: AppSettingsRow;
+        Insert: never;
+        Update: Partial<AppSettingsRow>;
+        Relationships: [];
+      };
+    };
+    Views: {
+      kit_availability: { Row: KitAvailabilityRow; Relationships: [] };
+      product_stock_status: { Row: ProductStockStatusRow; Relationships: [] };
+    };
+    Functions: {
+      quote_sale: {
+        Args: { p_items: PricingItemInput[]; p_payment_method_id: string; p_sold_at?: string };
+        Returns: PricingQuoteResult;
+      };
+      create_sale: {
+        Args: {
+          p_items: PricingItemInput[];
+          p_location_id: string;
+          p_sales_channel_id: string;
+          p_payment_method_id: string;
+          p_customer_id?: string | null;
+          p_doctor_id?: string | null;
+          p_notes?: string | null;
+          p_external_source?: string | null;
+          p_external_order_id?: string | null;
+          p_sold_at?: string;
+        };
+        Returns: CreateSaleResult;
+      };
+      cancel_sale: {
+        Args: { p_sale_id: string; p_reason: string };
+        Returns: { sale_id: string; status: "cancelled" };
+      };
+      transfer_stock: {
+        Args: {
+          p_from_location_id: string;
+          p_to_location_id: string;
+          p_items: { product_id: string; quantity: number }[];
+          p_notes?: string | null;
+        };
+        Returns: { transfer_id: string; transfer_number: string };
+      };
+      adjust_stock: {
+        Args: {
+          p_location_id: string;
+          p_product_id: string;
+          p_quantity_delta: number;
+          p_reason: StockAdjustmentReason;
+          p_notes?: string | null;
+        };
+        Returns: { movement_id: string; stock_before: number; stock_after: number };
+      };
+      set_product_price: {
+        Args: {
+          p_product_id: string;
+          p_price_condition_id: string;
+          p_amount: number;
+          p_valid_from?: string;
+        };
+        Returns: ProductPriceRow;
+      };
+    };
+    Enums: {
+      app_role: AppRole;
+      stock_location_type: StockLocationType;
+      product_type: ProductType;
+      price_rule_type: PriceRuleType;
+      sale_status: SaleStatus;
+      stock_movement_type: StockMovementType;
+      stock_transfer_status: StockTransferStatus;
+      stock_adjustment_reason: StockAdjustmentReason;
+    };
+  };
+};

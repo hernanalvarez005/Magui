@@ -1,0 +1,13 @@
+{
+  "name": "Maguirejuve · Ventas",
+  "short_name": "Maguirejuve",
+  "description": "Sistema de ventas, precios y stock de Maguirejuve.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf8f6",
+  "theme_color": "#faf8f6",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
