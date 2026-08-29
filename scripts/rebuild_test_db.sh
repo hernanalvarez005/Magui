@@ -19,6 +19,28 @@ create table auth.users (
 create or replace function auth.uid() returns uuid language sql stable as $$
   select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
 $$;
+
+-- Stub mínimo de storage.buckets/storage.objects (lo justo para que las
+-- migraciones de fotos de producto corran acá) — la implementación real de
+-- Supabase Storage es mucho más completa, esto es solo para no romper
+-- rebuild_test_db.sh con las políticas de storage.objects.
+create schema if not exists storage;
+create table storage.buckets (
+  id text primary key,
+  name text not null,
+  public boolean not null default false
+);
+create table storage.objects (
+  id uuid primary key default gen_random_uuid(),
+  bucket_id text references storage.buckets (id),
+  name text,
+  owner uuid,
+  created_at timestamptz not null default now()
+);
+alter table storage.objects enable row level security;
+grant usage on schema storage to authenticated, anon;
+grant select, insert, update, delete on storage.objects to authenticated, anon;
+grant select on storage.buckets to authenticated, anon;
 do $$
 begin
   if not exists (select from pg_roles where rolname = 'authenticated') then create role authenticated nologin; end if;

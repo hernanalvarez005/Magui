@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ProductImageUpload } from "@/components/admin/product-image-upload";
 import { createClient } from "@/lib/supabase/client";
 import { kitSchema } from "@/lib/validation/kit";
 
@@ -41,6 +42,7 @@ export interface EditableKit {
   commissionable: boolean;
   promo_eligible: boolean;
   notes: string | null;
+  image_url: string | null;
   components: { id: string; component_product_id: string; quantity: string }[];
 }
 
@@ -78,6 +80,7 @@ export function KitFormDialog({
     promo_eligible: kit?.promo_eligible ?? true,
     notes: kit?.notes ?? "",
   });
+  const [imageUrl, setImageUrl] = useState(kit?.image_url ?? null);
   const [rows, setRows] = useState<Row[]>(
     kit && kit.components.length > 0
       ? kit.components.map((c) => ({ key: c.id, id: c.id, component_product_id: c.component_product_id, quantity: c.quantity }))
@@ -113,6 +116,7 @@ export function KitFormDialog({
       commissionable: parsed.data.commissionable,
       promo_eligible: parsed.data.promo_eligible,
       notes: parsed.data.notes || null,
+      image_url: imageUrl,
     };
 
     let kitId = kit?.id ?? null;
@@ -217,6 +221,11 @@ export function KitFormDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label>Foto</Label>
+            <ProductImageUpload productId={kit?.id ?? null} imageUrl={imageUrl} onChange={setImageUrl} />
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="kit-sku">SKU</Label>

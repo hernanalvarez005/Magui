@@ -1,7 +1,7 @@
 {
-  "name": "Maguirejuve · Ventas",
-  "short_name": "Maguirejuve",
-  "description": "Sistema de ventas, precios y stock de Maguirejuve.",
+  "name": "Magui Rejuve · Ventas",
+  "short_name": "Magui Rejuve",
+  "description": "Sistema de ventas, precios y stock de Magui Rejuve.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#faf8f6",

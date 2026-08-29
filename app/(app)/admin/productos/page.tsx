@@ -11,7 +11,7 @@ export default async function AdminProductsPage() {
   const [{ data: products }, { data: kitComponents }] = await Promise.all([
     supabase
       .from("products")
-      .select("id, sku, name, product_type, category, unit, track_stock, commissionable, promo_eligible, default_min_stock, active, notes")
+      .select("id, sku, name, product_type, category, unit, track_stock, commissionable, promo_eligible, default_min_stock, active, notes, image_url")
       .order("name"),
     supabase.from("kit_components").select("kit_product_id, component_product_id, quantity"),
   ]);

@@ -94,6 +94,7 @@ export type ProductRow = {
   default_min_stock: string;
   active: boolean;
   notes: string | null;
+  image_url: string | null;
   created_at: string;
   updated_at: string;
 };

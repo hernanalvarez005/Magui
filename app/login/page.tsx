@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { LoginForm } from "@/components/auth/login-form";
+import { Logo } from "@/components/layout/logo";
 
 export const metadata: Metadata = { title: "Ingresar" };
 
@@ -13,10 +14,7 @@ export default async function LoginPage(props: PageProps<"/login">) {
     <div className="flex min-h-screen flex-1 items-center justify-center bg-secondary/40 px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-2 text-center">
-          <div className="flex size-14 items-center justify-center rounded-2xl bg-primary text-2xl font-serif text-primary-foreground">
-            M
-          </div>
-          <h1 className="text-xl font-semibold">Maguirejuve</h1>
+          <Logo variant="full" className="mb-1 h-28 w-28" />
           <p className="text-sm text-muted-foreground">Ventas, precios y stock</p>
         </div>
 

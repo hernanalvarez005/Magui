@@ -24,7 +24,7 @@ export default async function NewSalePage() {
       supabase.from("doctors").select("id, code, full_name").eq("active", true).order("full_name"),
       supabase
         .from("products")
-        .select("id, sku, name, product_type, category, track_stock")
+        .select("id, sku, name, product_type, category, track_stock, image_url")
         .eq("active", true)
         .order("name"),
     ]);

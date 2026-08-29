@@ -33,6 +33,7 @@ interface Product {
   default_min_stock: string;
   active: boolean;
   notes: string | null;
+  image_url: string | null;
   components: string[];
 }
 
@@ -88,18 +89,30 @@ export function ProductsTable({ products }: { products: Product[] }) {
             {rows.map((p) => (
               <TableRow key={p.id}>
                 <TableCell>
-                  <p className="font-medium">{p.name}</p>
-                  <p className="text-xs text-muted-foreground">{p.sku}</p>
-                  {p.product_type === "kit" || !p.track_stock ? (
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      <Badge variant="secondary">Kit</Badge>
-                      {p.components.length === 0 ? (
-                        <Badge variant="destructive">Sin componentes</Badge>
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted">
+                      {p.image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={p.image_url} alt="" className="size-full object-cover" />
                       ) : (
-                        <span className="text-xs text-muted-foreground">{p.components.join(", ")}</span>
+                        <span className="text-xs text-muted-foreground">{p.sku.slice(0, 2)}</span>
                       )}
                     </div>
-                  ) : null}
+                    <div>
+                      <p className="font-medium">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">{p.sku}</p>
+                      {p.product_type === "kit" || !p.track_stock ? (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          <Badge variant="secondary">Kit</Badge>
+                          {p.components.length === 0 ? (
+                            <Badge variant="destructive">Sin componentes</Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">{p.components.join(", ")}</span>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">{p.category ?? "—"}</TableCell>
                 <TableCell className="text-right">

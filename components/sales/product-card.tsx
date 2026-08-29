@@ -15,6 +15,7 @@ export interface ProductCardData {
   stock: number | null; // null = no trackeado / desconocido
   lowStock: boolean;
   unitPrice: number | null; // precio estimado bajo la condición actual (puede ser null si no cotizó todavía)
+  imageUrl: string | null;
 }
 
 export function ProductCard({
@@ -36,16 +37,25 @@ export function ProductCard({
         outOfStock && "opacity-60"
       )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium leading-tight">{product.name}</p>
+      <div className="flex items-start gap-2.5">
+        {product.imageUrl ? (
+          <div className="size-11 shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
+            {/* Foto en Supabase Storage — dominio no conocido de antemano, no next/image */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={product.imageUrl} alt="" className="size-full object-cover" />
+          </div>
+        ) : null}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <p className="truncate text-sm font-medium leading-tight">{product.name}</p>
+            {product.isKit ? (
+              <Badge variant="secondary" className="shrink-0">
+                Kit
+              </Badge>
+            ) : null}
+          </div>
           <p className="text-xs text-muted-foreground">{product.category ?? product.sku}</p>
         </div>
-        {product.isKit ? (
-          <Badge variant="secondary" className="shrink-0">
-            Kit
-          </Badge>
-        ) : null}
       </div>
 
       <div className="flex items-center justify-between gap-2">

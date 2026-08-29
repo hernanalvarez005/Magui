@@ -28,6 +28,7 @@ interface Kit {
   promo_eligible: boolean;
   active: boolean;
   notes: string | null;
+  image_url: string | null;
   components: { id: string; component_product_id: string; quantity: string }[];
 }
 
@@ -78,8 +79,20 @@ export function KitsTable({ kits, candidates }: { kits: Kit[]; candidates: Compo
             {rows.map((k) => (
               <TableRow key={k.id}>
                 <TableCell>
-                  <p className="font-medium">{k.name}</p>
-                  <p className="text-xs text-muted-foreground">{k.sku}</p>
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted">
+                      {k.image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={k.image_url} alt="" className="size-full object-cover" />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">{k.sku.slice(0, 2)}</span>
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-medium">{k.name}</p>
+                      <p className="text-xs text-muted-foreground">{k.sku}</p>
+                    </div>
+                  </div>
                 </TableCell>
                 <TableCell>
                   {k.components.length === 0 ? (

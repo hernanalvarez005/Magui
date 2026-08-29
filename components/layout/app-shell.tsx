@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOut, Settings, User as UserIcon } from "lucide-react";
 
+import { Logo } from "@/components/layout/logo";
 import { navItems } from "@/components/layout/nav-items";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,11 +53,9 @@ export function AppShell({
       {/* Sidebar desktop */}
       <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-card md:flex">
         <div className="flex items-center gap-2.5 px-5 py-5">
-          <div className="flex size-9 items-center justify-center rounded-xl bg-primary font-serif text-primary-foreground">
-            M
-          </div>
+          <Logo variant="mark" className="size-9 rounded-xl" />
           <div>
-            <p className="text-sm font-semibold leading-tight">Maguirejuve</p>
+            <p className="text-sm font-semibold leading-tight">Magui Rejuve</p>
             <p className="text-xs text-muted-foreground">{locationLabel}</p>
           </div>
         </div>
@@ -92,10 +91,8 @@ export function AppShell({
         {/* Header mobile + desktop */}
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between border-b border-border bg-card/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-card/80 md:h-16 md:px-6">
           <div className="flex items-center gap-2 md:hidden">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary font-serif text-sm text-primary-foreground">
-              M
-            </div>
-            <span className="text-sm font-semibold">Maguirejuve</span>
+            <Logo variant="mark" className="size-8 rounded-lg" />
+            <span className="text-sm font-semibold">Magui Rejuve</span>
           </div>
           <div className="hidden text-sm text-muted-foreground md:block">{locationLabel}</div>
 

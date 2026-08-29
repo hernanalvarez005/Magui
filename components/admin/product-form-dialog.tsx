@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ProductImageUpload } from "@/components/admin/product-image-upload";
 import { createClient } from "@/lib/supabase/client";
 import { productSchema } from "@/lib/validation/product";
 
@@ -38,6 +39,7 @@ export interface EditableProduct {
   promo_eligible: boolean;
   default_min_stock: string;
   notes: string | null;
+  image_url: string | null;
 }
 
 export function ProductFormDialog({
@@ -67,6 +69,7 @@ export function ProductFormDialog({
     default_min_stock: product?.default_min_stock ?? "0",
     notes: product?.notes ?? "",
   });
+  const [imageUrl, setImageUrl] = useState(product?.image_url ?? null);
   const [saving, setSaving] = useState(false);
 
   async function handleSave() {
@@ -93,6 +96,7 @@ export function ProductFormDialog({
       promo_eligible: parsed.data.promo_eligible,
       default_min_stock: String(parsed.data.default_min_stock),
       notes: parsed.data.notes || null,
+      image_url: imageUrl,
     };
 
     const { error } = product
@@ -125,6 +129,11 @@ export function ProductFormDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label>Foto</Label>
+            <ProductImageUpload productId={product?.id ?? null} imageUrl={imageUrl} onChange={setImageUrl} />
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sku">SKU</Label>

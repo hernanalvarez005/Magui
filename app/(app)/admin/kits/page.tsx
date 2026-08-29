@@ -11,7 +11,7 @@ export default async function AdminKitsPage() {
   const [{ data: kits }, { data: components }, { data: allKitComponents }] = await Promise.all([
     supabase
       .from("products")
-      .select("id, sku, name, category, commissionable, promo_eligible, active, notes")
+      .select("id, sku, name, category, commissionable, promo_eligible, active, notes, image_url")
       .eq("product_type", "kit")
       .order("name"),
     // Solo productos que trackean stock propio pueden ser componentes: la

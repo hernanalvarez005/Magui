@@ -17,12 +17,12 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Maguirejuve · Ventas",
-    template: "%s · Maguirejuve",
+    default: "Magui Rejuve · Ventas",
+    template: "%s · Magui Rejuve",
   },
-  description: "Sistema de ventas, precios y stock de Maguirejuve.",
+  description: "Sistema de ventas, precios y stock de Magui Rejuve.",
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, statusBarStyle: "default", title: "Maguirejuve" },
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "Magui Rejuve" },
 };
 
 export const viewport: Viewport = {
