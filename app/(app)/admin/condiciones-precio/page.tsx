@@ -8,12 +8,13 @@ export const metadata: Metadata = { title: "Condiciones de precio" };
 export default async function AdminPriceConditionsPage() {
   const supabase = await createClient();
 
-  const { data: conditions } = await supabase
-    .from("price_conditions")
-    .select("id, code, name, rule_type, payment_method_id, min_units, discount_percent, priority, combinable, active")
-    .order("priority");
-
-  const { data: paymentMethods } = await supabase.from("payment_methods").select("id, name");
+  const [{ data: conditions }, { data: paymentMethods }] = await Promise.all([
+    supabase
+      .from("price_conditions")
+      .select("id, code, name, rule_type, payment_method_id, min_units, discount_percent, priority, combinable, active")
+      .order("priority"),
+    supabase.from("payment_methods").select("id, name"),
+  ]);
   const pmMap = new Map((paymentMethods ?? []).map((p) => [p.id, p.name]));
 
   return (

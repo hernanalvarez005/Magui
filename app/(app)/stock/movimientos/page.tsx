@@ -38,15 +38,6 @@ export default async function StockMovementsPage(props: PageProps<"/stock/movimi
   const from = typeof searchParams.from === "string" ? searchParams.from : undefined;
   const to = typeof searchParams.to === "string" ? searchParams.to : undefined;
 
-  const [{ data: locations }, { data: products }] = await Promise.all([
-    supabase
-      .from("stock_locations")
-      .select("id, code, name")
-      .in("id", profile.locationIds.length > 0 ? profile.locationIds : ["00000000-0000-0000-0000-000000000000"])
-      .order("name"),
-    supabase.from("products").select("id, sku, name").order("name"),
-  ]);
-
   let query = supabase
     .from("stock_movements")
     .select("*", { count: "exact" })
@@ -59,10 +50,27 @@ export default async function StockMovementsPage(props: PageProps<"/stock/movimi
   if (from) query = query.gte("occurred_at", `${from}T00:00:00-03:00`);
   if (to) query = query.lte("occurred_at", `${to}T23:59:59-03:00`);
 
-  const { data: movements, count } = await query;
+  // locations/products no dependen de los filtros de arriba, así que van en
+  // paralelo con la consulta de movimientos en vez de esperarla.
+  const [{ data: locations }, { data: products }, { data: movements, count }] = await Promise.all([
+    supabase
+      .from("stock_locations")
+      .select("id, code, name")
+      .in("id", profile.locationIds.length > 0 ? profile.locationIds : ["00000000-0000-0000-0000-000000000000"])
+      .order("name"),
+    supabase.from("products").select("id, sku, name").order("name"),
+    query,
+  ]);
 
-  const productIds = Array.from(new Set((movements ?? []).map((m) => m.product_id)));
-  const locationIds = Array.from(new Set((movements ?? []).map((m) => m.location_id)));
+  // Nota: la RLS de stock_movements exige has_location_access(location_id)
+  // — exactamente el mismo criterio que ya usa la consulta de arriba para
+  // `locations` (scoped a profile.locationIds). Todo movimiento visible cae
+  // necesariamente dentro de esas mismas sedes, y `products` de arriba ya
+  // trae TODOS los productos — así que no hace falta volver a pedirle a la
+  // base ninguna de las dos tablas por separado para armar estos mapas.
+  const productMap = new Map((products ?? []).map((p) => [p.id, p]));
+  const locationMap = new Map((locations ?? []).map((l) => [l.id, l]));
+
   const userIds = Array.from(
     new Set((movements ?? []).map((m) => m.created_by).filter((id): id is string => !!id))
   );
@@ -70,24 +78,15 @@ export default async function StockMovementsPage(props: PageProps<"/stock/movimi
     new Set((movements ?? []).map((m) => m.sale_id).filter((id): id is string => !!id))
   );
 
-  const [{ data: productRows }, { data: locationRows }, { data: profileRows }, { data: saleRows }] =
-    await Promise.all([
-      productIds.length
-        ? supabase.from("products").select("id, name, sku").in("id", productIds)
-        : Promise.resolve({ data: [] as { id: string; name: string; sku: string }[] }),
-      locationIds.length
-        ? supabase.from("stock_locations").select("id, code, name").in("id", locationIds)
-        : Promise.resolve({ data: [] as { id: string; code: string; name: string }[] }),
-      userIds.length
-        ? supabase.from("profiles").select("id, full_name").in("id", userIds)
-        : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),
-      saleIds.length
-        ? supabase.from("sales").select("id, sale_number").in("id", saleIds)
-        : Promise.resolve({ data: [] as { id: string; sale_number: string }[] }),
-    ]);
+  const [{ data: profileRows }, { data: saleRows }] = await Promise.all([
+    userIds.length
+      ? supabase.from("profiles").select("id, full_name").in("id", userIds)
+      : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),
+    saleIds.length
+      ? supabase.from("sales").select("id, sale_number").in("id", saleIds)
+      : Promise.resolve({ data: [] as { id: string; sale_number: string }[] }),
+  ]);
 
-  const productMap = new Map((productRows ?? []).map((p) => [p.id, p]));
-  const locationMap = new Map((locationRows ?? []).map((l) => [l.id, l]));
   const profileMap = new Map((profileRows ?? []).map((p) => [p.id, p]));
   const saleMap = new Map((saleRows ?? []).map((s) => [s.id, s]));
 

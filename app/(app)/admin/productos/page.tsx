@@ -16,8 +16,10 @@ export default async function AdminProductsPage() {
     supabase.from("kit_components").select("kit_product_id, component_product_id, quantity"),
   ]);
 
-  const { data: allProducts } = await supabase.from("products").select("id, name");
-  const nameById = new Map((allProducts ?? []).map((p) => [p.id, p.name]));
+  // products de arriba ya trae id + name de TODOS los productos (no filtra
+  // por active) — alcanza para armar el nombre de cada componente de kit,
+  // no hace falta pedirle la misma tabla a la base una segunda vez.
+  const nameById = new Map((products ?? []).map((p) => [p.id, p.name]));
 
   const componentsByKit = new Map<string, string[]>();
   for (const kc of kitComponents ?? []) {
