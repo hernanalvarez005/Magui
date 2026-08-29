@@ -321,6 +321,9 @@ export type ProductStockStatusRow = {
 export type PricingItemInput = {
   product_id: string;
   quantity: number;
+  // Exclusivo de admin — el backend lo revalida siempre (nunca confía en
+  // que el frontend lo oculte). Ver 20260201000018_manual_price_override.
+  manual_price?: number;
 };
 
 export type PricingLine = {
@@ -337,6 +340,7 @@ export type PricingLine = {
   applied_price_condition_id: string | null;
   applied_promotion_id?: string | null;
   promotion_discount?: number;
+  manual_price?: boolean;
 };
 
 export type PricingQuoteResult =

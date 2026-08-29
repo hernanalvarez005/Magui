@@ -6,6 +6,9 @@ import { z } from "zod";
 export const cartItemSchema = z.object({
   product_id: z.string().uuid(),
   quantity: z.number().positive("La cantidad debe ser mayor a cero."),
+  // Exclusivo de admin — validación real la hace el backend (create_sale),
+  // esto es solo defensa en profundidad en el cliente.
+  manual_price: z.number().positive("El precio manual debe ser mayor a $0.").optional(),
 });
 
 export const freeSaleReasonSchema = z.enum(["GIFT", "SAMPLE", "EXCHANGE", "COURTESY", "OTHER"]);
@@ -32,6 +35,10 @@ export const newSaleSchema = z
   .refine((data) => !data.is_free_sale || !!data.free_sale_reason, {
     message: "Elegí un motivo para la entrega sin costo.",
     path: ["free_sale_reason"],
+  })
+  .refine((data) => !data.is_free_sale || !data.items.some((i) => i.manual_price !== undefined), {
+    message: "Una entrega sin costo no admite precio manual — son modos distintos.",
+    path: ["is_free_sale"],
   })
   .refine((data) => !data.skip_stock_movement || !data.is_free_sale, {
     message: "Una entrega sin costo siempre descuenta stock.",

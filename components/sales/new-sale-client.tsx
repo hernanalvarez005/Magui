@@ -130,6 +130,13 @@ export function NewSaleClient({
   const [freeSaleReason, setFreeSaleReason] = useState<"GIFT" | "SAMPLE" | "EXCHANGE" | "COURTESY" | "OTHER" | "">("");
   const [freeSaleNotes, setFreeSaleNotes] = useState("");
 
+  // Precio manual por línea (exclusivo de admin): se guarda como texto tal
+  // cual lo tipea (permite dejarlo vacío/a medio escribir), se convierte a
+  // número recién al armar cartItems. El backend es la autoridad real —
+  // create_sale() vuelve a validar que quien llama sea admin, esto es solo
+  // para no mandar un campo que la mayoría de los usuarios ni ve.
+  const [manualPrices, setManualPrices] = useState<Record<string, string>>({});
+
   // Carga histórica (admin): fecha pasada + opción de no descontar del stock
   // real, para completar ventas que ya pasaron y cuyo stock ya no refleja.
   const [isHistorical, setIsHistorical] = useState(false);
@@ -199,8 +206,19 @@ export function NewSaleClient({
   }, [locationId, supabase]);
 
   const cartItems = useMemo(
-    () => Object.entries(cart).filter(([, qty]) => qty > 0).map(([product_id, quantity]) => ({ product_id, quantity })),
-    [cart]
+    () =>
+      Object.entries(cart)
+        .filter(([, qty]) => qty > 0)
+        .map(([product_id, quantity]) => {
+          const raw = isAdmin ? manualPrices[product_id]?.trim() : undefined;
+          const manualPrice = raw ? Number(raw) : NaN;
+          return {
+            product_id,
+            quantity,
+            ...(raw && !Number.isNaN(manualPrice) && manualPrice > 0 ? { manual_price: manualPrice } : {}),
+          };
+        }),
+    [cart, manualPrices, isAdmin]
   );
   const cartCount = cartItems.reduce((acc, i) => acc + i.quantity, 0);
 
@@ -247,6 +265,18 @@ export function NewSaleClient({
       }
       return next;
     });
+    if (quantity <= 0) {
+      setManualPrices((prev) => {
+        if (!(productId in prev)) return prev;
+        const next = { ...prev };
+        delete next[productId];
+        return next;
+      });
+    }
+  }
+
+  function setManualPrice(productId: string, value: string) {
+    setManualPrices((prev) => ({ ...prev, [productId]: value }));
   }
 
   const filteredProducts = products.filter((p) =>
@@ -339,6 +369,7 @@ export function NewSaleClient({
     setIsHistorical(false);
     setHistoricalSoldAt("");
     setSkipStockMovement(false);
+    setManualPrices({});
   }
 
   if (receipt) {
@@ -519,7 +550,16 @@ export function NewSaleClient({
               <p className="text-xs text-muted-foreground">Regalo, muestra, canje o cortesía — total $0</p>
             </div>
           </div>
-          <Switch checked={isFreeSale} onCheckedChange={setIsFreeSale} />
+          <Switch
+            checked={isFreeSale}
+            onCheckedChange={(checked) => {
+              setIsFreeSale(checked);
+              // No combina con precio manual (motivos distintos, el backend
+              // también lo rechaza) — se limpia acá para que no quede un
+              // override "fantasma" esperando si se desactiva de nuevo.
+              if (checked) setManualPrices({});
+            }}
+          />
         </div>
 
         {isFreeSale ? (
@@ -618,6 +658,10 @@ export function NewSaleClient({
               quote={quote}
               quoting={quoting}
               onRemove={(id) => setQuantity(id, 0)}
+              isAdmin={isAdmin}
+              isFreeSale={isFreeSale}
+              manualPrices={manualPrices}
+              onManualPriceChange={setManualPrice}
             />
           </div>
 
@@ -695,12 +739,20 @@ function CartSummary({
   quote,
   quoting,
   onRemove,
+  isAdmin,
+  isFreeSale,
+  manualPrices,
+  onManualPriceChange,
 }: {
-  cartItems: { product_id: string; quantity: number }[];
+  cartItems: { product_id: string; quantity: number; manual_price?: number }[];
   products: ProductOption[];
   quote: PricingQuoteResult | null;
   quoting: boolean;
   onRemove: (productId: string) => void;
+  isAdmin: boolean;
+  isFreeSale: boolean;
+  manualPrices: Record<string, string>;
+  onManualPriceChange: (productId: string, value: string) => void;
 }) {
   if (cartItems.length === 0) {
     return <p className="py-8 text-center text-sm text-muted-foreground">Todavía no agregaste productos.</p>;
@@ -713,34 +765,69 @@ function CartSummary({
           const product = products.find((p) => p.id === item.product_id);
           // Una promoción (3x2, duo%) puede partir un mismo producto en más
           // de una línea del quote (ej. "2 pagas + 1 gratis") — hay que sumar
-          // todas las que le correspondan, nunca tomar solo la primera.
+          // todas las que le correspondan, nunca tomar solo la primera. Una
+          // línea con precio manual nunca se parte (queda afuera de promos),
+          // así que ahí "lines" siempre tiene una sola.
           const lines = quote?.ok ? quote.lines.filter((l) => l.product_id === item.product_id) : [];
           const lineTotal = lines.length > 0 ? lines.reduce((sum, l) => sum + l.line_total, 0) : null;
           const hasPromo = lines.some((l) => l.applied_promotion_id);
+          const hasManualPrice = lines.some((l) => l.manual_price);
           const avgUnitPrice = lines.length > 0 ? lineTotal! / item.quantity : null;
           return (
-            <div key={item.product_id} className="flex items-center justify-between gap-2 py-2.5">
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <p className="truncate text-sm font-medium">{product?.name ?? item.product_id}</p>
-                  {hasPromo ? (
-                    <Badge variant="secondary" className="shrink-0 font-normal">
-                      Promo
-                    </Badge>
-                  ) : null}
+            <div key={item.product_id} className="flex flex-col gap-1.5 py-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className="truncate text-sm font-medium">{product?.name ?? item.product_id}</p>
+                    {hasPromo ? (
+                      <Badge variant="secondary" className="shrink-0 font-normal">
+                        Promo
+                      </Badge>
+                    ) : null}
+                    {hasManualPrice ? (
+                      <Badge variant="outline" className="shrink-0 font-normal">
+                        Precio manual
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {item.quantity} × {avgUnitPrice !== null ? formatCurrency(avgUnitPrice) : "…"}
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {item.quantity} × {avgUnitPrice !== null ? formatCurrency(avgUnitPrice) : "…"}
-                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold">
+                    {lineTotal !== null ? formatCurrency(lineTotal) : "…"}
+                  </span>
+                  <Button variant="ghost" size="icon" className="size-7" onClick={() => onRemove(item.product_id)}>
+                    <X className="size-4" />
+                  </Button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold">
-                  {lineTotal !== null ? formatCurrency(lineTotal) : "…"}
-                </span>
-                <Button variant="ghost" size="icon" className="size-7" onClick={() => onRemove(item.product_id)}>
-                  <X className="size-4" />
-                </Button>
-              </div>
+
+              {/*
+                Editar precio: exclusivo de admin, no combina con venta sin
+                costo (ver el switch de arriba, que limpia esto al
+                activarse). El precio calculado queda de placeholder — si no
+                se toca, la venta sigue el motor de precios normal.
+              */}
+              {isAdmin && !isFreeSale ? (
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  Precio manual (por unidad)
+                  <span className="relative">
+                    <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2">$</span>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="0.01"
+                      placeholder={avgUnitPrice !== null ? String(Math.round(avgUnitPrice)) : ""}
+                      value={manualPrices[item.product_id] ?? ""}
+                      onChange={(e) => onManualPriceChange(item.product_id, e.target.value)}
+                      className="h-7 w-24 pl-4 text-xs"
+                    />
+                  </span>
+                </label>
+              ) : null}
             </div>
           );
         })}
@@ -800,6 +887,7 @@ function ReceiptView({ receipt, onNewSale }: { receipt: CreateSaleResult; onNewS
               <span>
                 {line.quantity} × {line.name}
                 {line.applied_promotion_id ? " · promo" : ""}
+                {line.manual_price ? " · precio manual" : ""}
               </span>
               <span className="font-medium">{formatCurrency(line.line_total)}</span>
             </div>
