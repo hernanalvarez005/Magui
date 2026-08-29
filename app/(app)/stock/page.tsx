@@ -29,18 +29,6 @@ export default async function StockPage(props: PageProps<"/stock">) {
     ...(status ? { status } : {}),
   };
 
-  const [{ data: locations }, { data: categories }] = await Promise.all([
-    supabase
-      .from("stock_locations")
-      .select("id, code, name")
-      .in("id", profile.locationIds.length > 0 ? profile.locationIds : ["00000000-0000-0000-0000-000000000000"])
-      .eq("active", true)
-      .order("name"),
-    supabase.from("products").select("category").eq("active", true).not("category", "is", null),
-  ]);
-
-  const distinctCategories = Array.from(new Set((categories ?? []).map((c) => c.category!))).sort();
-
   // IMPORTANTE: filtrar explícitamente por sedes accesibles acá, no confiar
   // solo en RLS. La vista hace CROSS JOIN con todas las sedes; en un LEFT JOIN
   // contra inventory_balances, RLS oculta la fila pero no la sede "fantasma"
@@ -58,19 +46,32 @@ export default async function StockPage(props: PageProps<"/stock">) {
   if (status) stockQuery = stockQuery.eq("status", status);
   if (q) stockQuery = stockQuery.ilike("name", `%${q}%`);
 
-  const [{ data: stockRows }, { data: kitRows }, { data: products }] = await Promise.all([
-    stockQuery.order("name"),
-    supabase
-      .from("kit_availability")
-      .select("kit_product_id, kit_sku, kit_name, location_id, location_code, buildable_qty")
-      .in("location_id", accessibleLocationIds),
-    supabase
-      .from("products")
-      .select("id, sku, name, track_stock")
-      .eq("active", true)
-      .eq("track_stock", true)
-      .order("name"),
-  ]);
+  // Las 5 consultas de acá son independientes entre sí (accessibleLocationIds
+  // sale de profile.locationIds, no de ninguna de ellas) — todas en una sola
+  // ronda en vez de dos etapas secuenciales.
+  const [{ data: locations }, { data: categories }, { data: stockRows }, { data: kitRows }, { data: products }] =
+    await Promise.all([
+      supabase
+        .from("stock_locations")
+        .select("id, code, name")
+        .in("id", accessibleLocationIds)
+        .eq("active", true)
+        .order("name"),
+      supabase.from("products").select("category").eq("active", true).not("category", "is", null),
+      stockQuery.order("name"),
+      supabase
+        .from("kit_availability")
+        .select("kit_product_id, kit_sku, kit_name, location_id, location_code, buildable_qty")
+        .in("location_id", accessibleLocationIds),
+      supabase
+        .from("products")
+        .select("id, sku, name, track_stock")
+        .eq("active", true)
+        .eq("track_stock", true)
+        .order("name"),
+    ]);
+
+  const distinctCategories = Array.from(new Set((categories ?? []).map((c) => c.category!))).sort();
 
   const withoutStock = (stockRows ?? []).filter((r) => r.status === "sin_stock").length;
   const lowStock = (stockRows ?? []).filter((r) => r.status === "bajo").length;
