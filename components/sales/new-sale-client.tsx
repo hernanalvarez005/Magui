@@ -404,6 +404,37 @@ export function NewSaleClient({
           </div>
         </div>
 
+        {/*
+          Selección de cliente arriba de todo, siempre visible (header
+          sticky) — antes estaba después de toda la grilla de productos, con
+          un botón chico fácil de pasar por alto. La queja "tengo que cargar
+          el cliente antes" no era que faltara el flujo inline (ya existía),
+          era que nadie lo veía a tiempo: para notarlo había que scrollear
+          más allá de todos los productos.
+        */}
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 flex-1 justify-start gap-2 overflow-hidden"
+            onClick={() => setCustomerDialogOpen(true)}
+          >
+            <User className="size-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">{customer ? customer.full_name : "Agregar cliente (opcional)"}</span>
+          </Button>
+          {customer ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 shrink-0"
+              onClick={() => setCustomer(null)}
+            >
+              <X className="size-4" />
+            </Button>
+          ) : null}
+        </div>
+
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -435,20 +466,10 @@ export function NewSaleClient({
         )}
       </div>
 
-      {/* Cliente / doctora */}
+      {/* Doctora */}
       <div className="flex flex-col gap-3 px-4 md:px-6">
         <Separator />
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => setCustomerDialogOpen(true)}>
-            <User className="size-4" />
-            {customer ? customer.full_name : "+ Cliente (opcional)"}
-          </Button>
-          {customer ? (
-            <Button variant="ghost" size="sm" onClick={() => setCustomer(null)}>
-              <X className="size-4" /> Quitar
-            </Button>
-          ) : null}
-
           <Select value={doctorId} onValueChange={setDoctorId}>
             <SelectTrigger className="w-auto min-w-40 gap-2">
               <UserRound className="size-4 text-muted-foreground" />
@@ -571,35 +592,6 @@ export function NewSaleClient({
         </div>
       ) : null}
 
-      {/* Medio de pago (no aplica a venta sin costo) */}
-      {!isFreeSale ? (
-        <div className="flex flex-col gap-2 px-4 md:px-6">
-          <Label className="text-sm">Medio de pago</Label>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {paymentMethods.map((pm) => {
-              const Icon = PAYMENT_ICONS[pm.code] ?? Banknote;
-              const active = pm.id === paymentMethodId;
-              return (
-                <button
-                  key={pm.id}
-                  type="button"
-                  onClick={() => setPaymentMethodId(pm.id)}
-                  className={cn(
-                    "flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-xl border-2 px-2 py-3 text-center text-xs font-medium leading-tight transition-colors",
-                    active
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border text-muted-foreground hover:bg-accent"
-                  )}
-                >
-                  <Icon className="size-5 shrink-0" />
-                  <span className="text-balance">{pm.name}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
       {/* Carrito flotante */}
       <Sheet open={cartOpen} onOpenChange={setCartOpen}>
         <SheetTrigger asChild>
@@ -628,6 +620,42 @@ export function NewSaleClient({
               onRemove={(id) => setQuantity(id, 0)}
             />
           </div>
+
+          {/*
+            Medio de pago vive acá adentro, no en la pantalla principal:
+            antes estaba en el flujo normal de la página, justo donde el
+            botón flotante del carrito (fixed) podía terminar tapando una de
+            las opciones al aparecer. Elegirlo acá, ya dentro de la sheet de
+            revisión, evita ese solapamiento de raíz y además tiene más
+            sentido en el flujo: se elige justo antes de confirmar.
+          */}
+          {!isFreeSale ? (
+            <div className="flex shrink-0 flex-col gap-2 border-t border-border pt-3">
+              <Label className="text-sm">Medio de pago</Label>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {paymentMethods.map((pm) => {
+                  const Icon = PAYMENT_ICONS[pm.code] ?? Banknote;
+                  const active = pm.id === paymentMethodId;
+                  return (
+                    <button
+                      key={pm.id}
+                      type="button"
+                      onClick={() => setPaymentMethodId(pm.id)}
+                      className={cn(
+                        "flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl border-2 px-2 py-2.5 text-center text-xs font-medium leading-tight transition-colors",
+                        active
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:bg-accent"
+                      )}
+                    >
+                      <Icon className="size-5 shrink-0" />
+                      <span className="text-balance">{pm.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
 
           <SheetFooter>
             <Button
