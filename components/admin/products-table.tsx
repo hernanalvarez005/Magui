@@ -93,7 +93,7 @@ export function ProductsTable({ products }: { products: Product[] }) {
                     <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted">
                       {p.image_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.image_url} alt="" className="size-full object-cover" />
+                        <img src={p.image_url} alt="" loading="lazy" className="size-full object-cover" />
                       ) : (
                         <span className="text-xs text-muted-foreground">{p.sku.slice(0, 2)}</span>
                       )}

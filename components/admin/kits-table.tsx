@@ -83,7 +83,7 @@ export function KitsTable({ kits, candidates }: { kits: Kit[]; candidates: Compo
                     <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted">
                       {k.image_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={k.image_url} alt="" className="size-full object-cover" />
+                        <img src={k.image_url} alt="" loading="lazy" className="size-full object-cover" />
                       ) : (
                         <span className="text-xs text-muted-foreground">{k.sku.slice(0, 2)}</span>
                       )}

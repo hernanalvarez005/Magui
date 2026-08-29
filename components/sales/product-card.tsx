@@ -42,7 +42,7 @@ export function ProductCard({
           <div className="size-11 shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
             {/* Foto en Supabase Storage — dominio no conocido de antemano, no next/image */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={product.imageUrl} alt="" className="size-full object-cover" />
+            <img src={product.imageUrl} alt="" loading="lazy" className="size-full object-cover" />
           </div>
         ) : null}
         <div className="min-w-0 flex-1">

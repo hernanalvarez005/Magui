@@ -30,23 +30,6 @@ export default async function SalesListPage(props: PageProps<"/ventas">) {
   const rawStatus = typeof searchParams.status === "string" ? searchParams.status : undefined;
   const status = rawStatus === "confirmed" || rawStatus === "cancelled" ? rawStatus : undefined;
 
-  const [{ data: locations }, { data: channels }, { data: paymentMethods }, { data: doctors }] =
-    await Promise.all([
-      supabase
-        .from("stock_locations")
-        .select("id, code, name")
-        .in("id", profile.locationIds.length > 0 ? profile.locationIds : ["00000000-0000-0000-0000-000000000000"])
-        .order("name"),
-      supabase.from("sales_channels").select("id, code, name").order("sort_order"),
-      supabase.from("payment_methods").select("id, code, name").order("sort_order"),
-      supabase.from("doctors").select("id, code, full_name").order("full_name"),
-    ]);
-
-  const sellers =
-    profile.role === "admin"
-      ? (await supabase.from("profiles").select("id, full_name").order("full_name")).data
-      : null;
-
   let query = supabase
     .from("sales")
     .select("*", { count: "exact" })
@@ -62,7 +45,24 @@ export default async function SalesListPage(props: PageProps<"/ventas">) {
   if (paymentMethodId) query = query.eq("payment_method_id", paymentMethodId);
   if (status) query = query.eq("status", status);
 
-  const { data: sales, count } = await query;
+  // Ninguna de estas depende de las otras (los filtros de arriba usan los IDs
+  // crudos de la URL, no las filas resueltas) — van todas en paralelo.
+  const [{ data: locations }, { data: channels }, { data: paymentMethods }, { data: doctors }, sellersResult, { data: sales, count }] =
+    await Promise.all([
+      supabase
+        .from("stock_locations")
+        .select("id, code, name")
+        .in("id", profile.locationIds.length > 0 ? profile.locationIds : ["00000000-0000-0000-0000-000000000000"])
+        .order("name"),
+      supabase.from("sales_channels").select("id, code, name").order("sort_order"),
+      supabase.from("payment_methods").select("id, code, name").order("sort_order"),
+      supabase.from("doctors").select("id, code, full_name").order("full_name"),
+      profile.role === "admin"
+        ? supabase.from("profiles").select("id, full_name").order("full_name")
+        : Promise.resolve({ data: null }),
+      query,
+    ]);
+  const sellers = sellersResult.data;
 
   const locationIds = Array.from(new Set((sales ?? []).map((s) => s.location_id)));
   const channelIds = Array.from(new Set((sales ?? []).map((s) => s.sales_channel_id)));

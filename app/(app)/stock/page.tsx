@@ -58,19 +58,19 @@ export default async function StockPage(props: PageProps<"/stock">) {
   if (status) stockQuery = stockQuery.eq("status", status);
   if (q) stockQuery = stockQuery.ilike("name", `%${q}%`);
 
-  const { data: stockRows } = await stockQuery.order("name");
-
-  const { data: kitRows } = await supabase
-    .from("kit_availability")
-    .select("kit_product_id, kit_sku, kit_name, location_id, location_code, buildable_qty")
-    .in("location_id", accessibleLocationIds);
-
-  const { data: products } = await supabase
-    .from("products")
-    .select("id, sku, name, track_stock")
-    .eq("active", true)
-    .eq("track_stock", true)
-    .order("name");
+  const [{ data: stockRows }, { data: kitRows }, { data: products }] = await Promise.all([
+    stockQuery.order("name"),
+    supabase
+      .from("kit_availability")
+      .select("kit_product_id, kit_sku, kit_name, location_id, location_code, buildable_qty")
+      .in("location_id", accessibleLocationIds),
+    supabase
+      .from("products")
+      .select("id, sku, name, track_stock")
+      .eq("active", true)
+      .eq("track_stock", true)
+      .order("name"),
+  ]);
 
   const withoutStock = (stockRows ?? []).filter((r) => r.status === "sin_stock").length;
   const lowStock = (stockRows ?? []).filter((r) => r.status === "bajo").length;

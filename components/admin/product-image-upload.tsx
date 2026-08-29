@@ -38,10 +38,20 @@ export function ProductImageUpload({
     }
 
     setUploading(true);
+    let upload: Blob = file;
+    try {
+      upload = await downscaleImage(file);
+    } catch {
+      // Si el navegador no puede procesarla (formato raro, etc.), subimos el
+      // archivo original tal cual en vez de bloquear la carga.
+    }
+
     const supabase = createClient();
-    const ext = file.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
-    const path = `${productId ?? "nuevo"}-${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("product-images").upload(path, file, { upsert: true });
+    const path = `${productId ?? "nuevo"}-${Date.now()}.jpg`;
+    const { error } = await supabase.storage.from("product-images").upload(path, upload, {
+      upsert: true,
+      contentType: "image/jpeg",
+    });
 
     if (error) {
       setUploading(false);
@@ -97,4 +107,34 @@ export function ProductImageUpload({
       </div>
     </div>
   );
+}
+
+/**
+ * Reduce la foto a un JPEG liviano antes de subirla: las fotos que salen
+ * directo de un celular suelen pesar varios MB a resolución completa, y esta
+ * pantalla puede mostrar decenas de ellas a la vez (grilla de Nueva Venta,
+ * tablas de productos/kits) — sin esto cada carga de esas pantallas bajaba
+ * todas esas fotos a tamaño completo y la app se sentía lenta en general.
+ * 800px de lado máximo alcanza de sobra para una miniatura de producto.
+ */
+async function downscaleImage(file: File, maxSide = 800, quality = 0.82): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const width = Math.round(bitmap.width * scale);
+  const height = Math.round(bitmap.height * scale);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("No se pudo procesar la imagen.");
+  ctx.drawImage(bitmap, 0, 0, width, height);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("No se pudo procesar la imagen."))),
+      "image/jpeg",
+      quality
+    );
+  });
 }
