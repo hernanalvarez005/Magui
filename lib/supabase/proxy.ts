@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { fetchWithTimeout } from "@/lib/supabase/fetch-with-timeout";
+
 /**
  * Refresca la sesión de Supabase en cada request (patrón SSR recomendado).
  * Se llama desde proxy.ts (el "middleware" de Next.js 16). También protege
@@ -25,6 +27,9 @@ export async function updateSession(request: NextRequest) {
           );
         },
       },
+      // Esto corre en CADA navegación (ver comentario en fetch-with-timeout.ts)
+      // — es el punto donde más se nota un Supabase Auth lento.
+      global: { fetch: fetchWithTimeout(8000) },
     }
   );
 

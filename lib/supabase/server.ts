@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseJsClient } from "@supabase/supabase-js";
 
+import { fetchWithTimeout } from "@/lib/supabase/fetch-with-timeout";
 import type { Database } from "@/types/database";
 
 /**
@@ -33,6 +34,10 @@ export async function createClient() {
           }
         },
       },
+      // Ver fetch-with-timeout.ts: sin esto, cualquier query lenta de una
+      // page/Server Action se queda esperando sin límite — es lo que se
+      // siente como "la navegación se cuelga".
+      global: { fetch: fetchWithTimeout(8000) },
     }
   );
 }
@@ -49,5 +54,6 @@ export function createServiceRoleClient() {
   }
   return createSupabaseJsClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, key, {
     auth: { autoRefreshToken: false, persistSession: false },
+    global: { fetch: fetchWithTimeout(8000) },
   });
 }

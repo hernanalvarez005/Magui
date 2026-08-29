@@ -34,9 +34,17 @@ export interface CurrentProfile {
 export const getCurrentProfile = cache(async (): Promise<CurrentProfile> => {
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Igual que proxy.ts: si Supabase Auth no responde a tiempo (ver
+  // fetch-with-timeout.ts), se trata como "sin sesión" en vez de dejar que
+  // el error suba hasta app/error.tsx — una sesión vencida/no disponible
+  // debe mandar a /login, no a una pantalla de error genérica.
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    user = null;
+  }
 
   if (!user) {
     redirect("/login");
