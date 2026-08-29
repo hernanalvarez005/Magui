@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, MessageCircle, Plus, Search, Trash2 } from "lucide-react";
+import { Loader2, MessageCircle, Plus, Receipt, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +20,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createClient } from "@/lib/supabase/client";
 import { newCustomerSchema } from "@/lib/validation/sale";
-import { formatDate, whatsAppLink } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime, whatsAppLink } from "@/lib/utils";
+import type { CustomerPurchaseHistoryEntry } from "@/types/database";
 
 interface Customer {
   id: string;
@@ -154,6 +155,34 @@ function CustomerDialog({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Historial de compras: cualquier vendedora ve TODAS las compras del
+  // cliente (no solo las que ella misma vendió) — customer_purchase_history
+  // es una RPC dedicada justamente para eso, ver su comentario en la
+  // migración. No se pide para "Nuevo cliente" (no tiene historial).
+  const [history, setHistory] = useState<CustomerPurchaseHistoryEntry[] | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const customerId = customer?.id;
+  useEffect(() => {
+    if (!customerId) {
+      void Promise.resolve().then(() => setHistory(null));
+      return;
+    }
+    let cancelled = false;
+    void Promise.resolve().then(() => !cancelled && setHistoryLoading(true));
+    const supabase = createClient();
+    supabase
+      .rpc("customer_purchase_history", { p_customer_id: customerId })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        setHistoryLoading(false);
+        setHistory(error ? [] : (data as CustomerPurchaseHistoryEntry[]));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [customerId]);
+
   async function handleSave() {
     const parsed = newCustomerSchema.safeParse(form);
     if (!parsed.success) {
@@ -281,6 +310,46 @@ function CustomerDialog({
               <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
               Cliente activo
             </label>
+          ) : null}
+
+          {customer ? (
+            <div className="flex flex-col gap-2 border-t border-border pt-3">
+              <div className="flex items-center gap-1.5 text-sm font-medium">
+                <Receipt className="size-4 text-muted-foreground" />
+                Historial de compras
+              </div>
+              {historyLoading ? (
+                <p className="py-2 text-center text-sm text-muted-foreground">Cargando…</p>
+              ) : !history || history.length === 0 ? (
+                <p className="py-2 text-center text-sm text-muted-foreground">
+                  Todavía no tiene compras registradas.
+                </p>
+              ) : (
+                <div className="flex max-h-56 flex-col gap-2 overflow-y-auto">
+                  {history.map((sale) => (
+                    <div key={sale.sale_id} className="rounded-lg border border-border p-2.5 text-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium">{formatDateTime(sale.sold_at)}</span>
+                        <span className="font-semibold">
+                          {sale.is_free_sale ? "Sin costo" : formatCurrency(sale.total)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {sale.location_name}
+                        {sale.seller_name ? ` · ${sale.seller_name}` : ""}
+                      </p>
+                      <ul className="mt-1.5 flex flex-col gap-0.5 text-xs text-muted-foreground">
+                        {sale.items.map((item) => (
+                          <li key={item.product_id}>
+                            {item.quantity} × {item.name}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           ) : null}
         </div>
 

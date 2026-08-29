@@ -368,6 +368,18 @@ export type CreateSaleResult = {
   lines: PricingLine[];
 };
 
+export type CustomerPurchaseHistoryEntry = {
+  sale_id: string;
+  sale_number: string;
+  sold_at: string;
+  location_name: string;
+  seller_name: string | null;
+  total: number;
+  is_free_sale: boolean;
+  stock_skipped: boolean;
+  items: { product_id: string; name: string; sku: string; quantity: number; line_total: number }[];
+};
+
 export type DashboardReport = {
   kpis: {
     sales_count: number;
@@ -615,6 +627,10 @@ export type Database = {
       deactivate_customer: {
         Args: { p_customer_id: string };
         Returns: { customer_id: string; active: boolean };
+      };
+      customer_purchase_history: {
+        Args: { p_customer_id: string };
+        Returns: CustomerPurchaseHistoryEntry[];
       };
       set_promotion_products: {
         Args: { p_promotion_id: string; p_product_ids: string[] };
