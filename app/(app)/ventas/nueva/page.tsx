@@ -11,23 +11,30 @@ export default async function NewSalePage() {
   const profile = await getCurrentProfile();
   const supabase = await createClient();
 
-  const [{ data: locations }, { data: channels }, { data: paymentMethods }, { data: doctors }, { data: products }] =
-    await Promise.all([
-      supabase
-        .from("stock_locations")
-        .select("id, code, name")
-        .in("id", profile.locationIds.length > 0 ? profile.locationIds : ["00000000-0000-0000-0000-000000000000"])
-        .eq("active", true)
-        .order("name"),
-      supabase.from("sales_channels").select("id, code, name").eq("active", true).order("sort_order"),
-      supabase.from("payment_methods").select("id, code, name").eq("active", true).order("sort_order"),
-      supabase.from("doctors").select("id, code, full_name").eq("active", true).order("full_name"),
-      supabase
-        .from("products")
-        .select("id, sku, name, product_type, category, track_stock, image_url")
-        .eq("active", true)
-        .order("name"),
-    ]);
+  const [
+    { data: locations },
+    { data: channels },
+    { data: paymentMethods },
+    { data: doctors },
+    { data: products },
+    { data: kitComponents },
+  ] = await Promise.all([
+    supabase
+      .from("stock_locations")
+      .select("id, code, name")
+      .in("id", profile.locationIds.length > 0 ? profile.locationIds : ["00000000-0000-0000-0000-000000000000"])
+      .eq("active", true)
+      .order("name"),
+    supabase.from("sales_channels").select("id, code, name").eq("active", true).order("sort_order"),
+    supabase.from("payment_methods").select("id, code, name").eq("active", true).order("sort_order"),
+    supabase.from("doctors").select("id, code, full_name").eq("active", true).order("full_name"),
+    supabase
+      .from("products")
+      .select("id, sku, name, product_type, category, track_stock, image_url")
+      .eq("active", true)
+      .order("name"),
+    supabase.from("kit_components").select("kit_product_id, component_product_id, quantity"),
+  ]);
 
   if (!locations || locations.length === 0) {
     return (
@@ -38,6 +45,18 @@ export default async function NewSalePage() {
     );
   }
 
+  // "Qué incluye" cada kit, para mostrarlo directo en la tarjeta al armar la
+  // venta — sin esto había que ir a Administración → Kits para saberlo.
+  // products de arriba ya trae el nombre de TODOS los productos (kits
+  // incluidos), no hace falta pedirle esa tabla a la base una segunda vez.
+  const nameById = new Map((products ?? []).map((p) => [p.id, p.name]));
+  const kitContents = new Map<string, string[]>();
+  for (const kc of kitComponents ?? []) {
+    const list = kitContents.get(kc.kit_product_id) ?? [];
+    list.push(`${kc.quantity}× ${nameById.get(kc.component_product_id) ?? "?"}`);
+    kitContents.set(kc.kit_product_id, list);
+  }
+
   return (
     <NewSaleClient
       seller={{ id: profile.id, fullName: profile.fullName }}
@@ -45,7 +64,7 @@ export default async function NewSalePage() {
       channels={channels ?? []}
       paymentMethods={paymentMethods ?? []}
       doctors={doctors ?? []}
-      products={products ?? []}
+      products={(products ?? []).map((p) => ({ ...p, kitContents: kitContents.get(p.id) ?? null }))}
       isAdmin={profile.role === "admin"}
     />
   );

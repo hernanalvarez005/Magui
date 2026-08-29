@@ -78,6 +78,7 @@ interface ProductOption {
   category: string | null;
   track_stock: boolean;
   image_url: string | null;
+  kitContents: string[] | null;
 }
 
 const PAYMENT_ICONS: Record<string, React.ElementType> = {
@@ -299,6 +300,7 @@ export function NewSaleClient({
       lowStock: lowStock[p.id] ?? false,
       unitPrice: line?.sale_unit_price ?? null,
       imageUrl: p.image_url,
+      kitContents: p.kitContents,
     };
   }
 

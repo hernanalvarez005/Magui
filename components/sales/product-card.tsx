@@ -16,6 +16,7 @@ export interface ProductCardData {
   lowStock: boolean;
   unitPrice: number | null; // precio estimado bajo la condición actual (puede ser null si no cotizó todavía)
   imageUrl: string | null;
+  kitContents: string[] | null; // ej. ["2× Sérum Vitamina C", "1× Crema Hidratante"] — null si no es kit
 }
 
 export function ProductCard({
@@ -55,6 +56,14 @@ export function ProductCard({
             ) : null}
           </div>
           <p className="text-xs text-muted-foreground">{product.category ?? product.sku}</p>
+          {product.isKit && product.kitContents && product.kitContents.length > 0 ? (
+            <p
+              className="mt-0.5 line-clamp-2 text-xs text-muted-foreground"
+              title={`Incluye: ${product.kitContents.join(", ")}`}
+            >
+              Incluye: {product.kitContents.join(", ")}
+            </p>
+          ) : null}
         </div>
       </div>
 
