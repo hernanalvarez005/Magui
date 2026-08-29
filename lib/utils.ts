@@ -50,6 +50,38 @@ export function formatDate(value: string | Date | null | undefined): string {
   return dateFormatter.format(date);
 }
 
+/**
+ * Arma el link de "click to chat" de WhatsApp (wa.me) a partir de lo que
+ * haya cargado en customers.whatsapp — un campo de texto libre, sin formato
+ * forzado (se tipea "11 2233-4455", "011-2233-4455", "+54 9 11 2233 4455",
+ * etc.). wa.me necesita el número en formato internacional sin signos
+ * (549 + código de área sin 0 + número sin el 15 que se usaba antes para
+ * celulares). Se cubren los casos más comunes de cómo se tipea un celu
+ * argentino; si el resultado no abre el chat correcto, se corrige el
+ * WhatsApp del cliente en su ficha con el formato completo (+54 9 11...).
+ * Null si no hay nada cargado.
+ */
+export function whatsAppLink(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  let digits = raw.replace(/\D/g, "");
+  if (digits.length === 0) return null;
+
+  if (digits.startsWith("54")) {
+    // Ya viene con código de país. Si es un celu sin el "9" (marcador de
+    // móvil que WhatsApp exige para Argentina), se lo agrega.
+    const rest = digits.slice(2);
+    if (!rest.startsWith("9")) digits = `549${rest}`;
+  } else {
+    // Sin código de país: se asume número local argentino. Se limpian
+    // prefijos que la gente sigue tipeando por costumbre (0 de larga
+    // distancia, 15 de celular) antes de anteponer 549.
+    digits = digits.replace(/^0/, "").replace(/^(\d{2,4})15/, "$1");
+    digits = `549${digits}`;
+  }
+
+  return `https://wa.me/${digits}`;
+}
+
 /** Fecha de "hoy" en zona horaria de negocio, como YYYY-MM-DD, para filtros de reportes. */
 export function todayInBuenosAires(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {

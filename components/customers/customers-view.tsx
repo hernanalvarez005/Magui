@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, Plus, Search, Trash2 } from "lucide-react";
+import { Loader2, MessageCircle, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createClient } from "@/lib/supabase/client";
 import { newCustomerSchema } from "@/lib/validation/sale";
-import { formatDate } from "@/lib/utils";
+import { formatDate, whatsAppLink } from "@/lib/utils";
 
 interface Customer {
   id: string;
@@ -88,20 +88,31 @@ export function CustomersView({
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {initialCustomers.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => setEditing(c)}
-            className="flex flex-col gap-1 rounded-xl border border-border bg-card p-3.5 text-left transition-colors hover:bg-accent"
-          >
-            <div className="flex items-center justify-between">
-              <p className="font-medium">{c.full_name}</p>
-              {!c.active ? <Badge variant="outline">Inactivo</Badge> : null}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {[c.dni ? `DNI ${c.dni}` : null, c.whatsapp].filter(Boolean).join(" · ") || "Sin datos adicionales"}
-            </p>
-            <p className="text-xs text-muted-foreground">Cliente desde {formatDate(c.created_at)}</p>
-          </button>
+          <div key={c.id} className="flex flex-col gap-1 rounded-xl border border-border bg-card p-3.5">
+            <button
+              onClick={() => setEditing(c)}
+              className="flex flex-col gap-1 rounded-md text-left transition-colors hover:text-foreground/80"
+            >
+              <div className="flex items-center justify-between">
+                <p className="font-medium">{c.full_name}</p>
+                {!c.active ? <Badge variant="outline">Inactivo</Badge> : null}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {[c.dni ? `DNI ${c.dni}` : null, c.whatsapp].filter(Boolean).join(" · ") || "Sin datos adicionales"}
+              </p>
+              <p className="text-xs text-muted-foreground">Cliente desde {formatDate(c.created_at)}</p>
+            </button>
+            {c.whatsapp ? (
+              <a
+                href={whatsAppLink(c.whatsapp) ?? undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-md bg-emerald-600/10 px-2 py-1 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-600/20 dark:text-emerald-400"
+              >
+                <MessageCircle className="size-3.5" /> Enviar WhatsApp
+              </a>
+            ) : null}
+          </div>
         ))}
       </div>
 
@@ -237,7 +248,19 @@ function CustomerDialog({
               <Input value={form.dni} onChange={(e) => setForm((f) => ({ ...f, dni: e.target.value }))} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>WhatsApp</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label>WhatsApp</Label>
+                {form.whatsapp.trim() ? (
+                  <a
+                    href={whatsAppLink(form.whatsapp) ?? undefined}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 hover:underline dark:text-emerald-400"
+                  >
+                    <MessageCircle className="size-3.5" /> Abrir chat
+                  </a>
+                ) : null}
+              </div>
               <Input value={form.whatsapp} onChange={(e) => setForm((f) => ({ ...f, whatsapp: e.target.value }))} />
             </div>
           </div>
