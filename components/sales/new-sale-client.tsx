@@ -8,6 +8,7 @@ import {
   ClipboardCopy,
   CreditCard,
   Gift,
+  History,
   Landmark,
   Loader2,
   Search,
@@ -100,6 +101,7 @@ export function NewSaleClient({
   paymentMethods,
   doctors,
   products,
+  isAdmin,
 }: {
   seller: { id: string; fullName: string };
   locations: LocationOption[];
@@ -107,6 +109,7 @@ export function NewSaleClient({
   paymentMethods: PaymentMethodOption[];
   doctors: DoctorOption[];
   products: ProductOption[];
+  isAdmin: boolean;
 }) {
   const supabase = useMemo(() => createClient(), []);
 
@@ -125,6 +128,12 @@ export function NewSaleClient({
   const [isFreeSale, setIsFreeSale] = useState(false);
   const [freeSaleReason, setFreeSaleReason] = useState<"GIFT" | "SAMPLE" | "EXCHANGE" | "COURTESY" | "OTHER" | "">("");
   const [freeSaleNotes, setFreeSaleNotes] = useState("");
+
+  // Carga histórica (admin): fecha pasada + opción de no descontar del stock
+  // real, para completar ventas que ya pasaron y cuyo stock ya no refleja.
+  const [isHistorical, setIsHistorical] = useState(false);
+  const [historicalSoldAt, setHistoricalSoldAt] = useState("");
+  const [skipStockMovement, setSkipStockMovement] = useState(false);
 
   const [stock, setStock] = useState<Record<string, number>>({});
   const [lowStock, setLowStock] = useState<Record<string, boolean>>({});
@@ -214,7 +223,7 @@ export function NewSaleClient({
         p_is_free_sale: isFreeSale,
       });
       if (error) {
-        setQuote({ ok: false, error_message: "No pudimos calcular el precio. Probá de nuevo." });
+        setQuote({ ok: false, error_message: humanizeSaleError(error.message) });
       } else {
         setQuote(data as PricingQuoteResult);
       }
@@ -262,6 +271,11 @@ export function NewSaleClient({
   }
 
   async function handleConfirm() {
+    if (isHistorical && !historicalSoldAt) {
+      toast.error("Elegí la fecha de la venta histórica.");
+      return;
+    }
+
     const payload = {
       items: cartItems,
       location_id: locationId,
@@ -273,6 +287,8 @@ export function NewSaleClient({
       is_free_sale: isFreeSale,
       free_sale_reason: isFreeSale ? freeSaleReason || null : null,
       free_sale_notes: isFreeSale ? freeSaleNotes.trim() || null : null,
+      sold_at: isHistorical && historicalSoldAt ? `${historicalSoldAt}:00-03:00` : null,
+      skip_stock_movement: isHistorical && skipStockMovement,
     };
     const parsed = newSaleSchema.safeParse(payload);
     if (!parsed.success) {
@@ -294,6 +310,8 @@ export function NewSaleClient({
       p_is_free_sale: parsed.data.is_free_sale,
       p_free_sale_reason: parsed.data.free_sale_reason,
       p_free_sale_notes: parsed.data.free_sale_notes,
+      ...(parsed.data.sold_at ? { p_sold_at: parsed.data.sold_at } : {}),
+      p_skip_stock_movement: parsed.data.skip_stock_movement,
     });
     setConfirming(false);
 
@@ -316,6 +334,9 @@ export function NewSaleClient({
     setIsFreeSale(false);
     setFreeSaleReason("");
     setFreeSaleNotes("");
+    setIsHistorical(false);
+    setHistoricalSoldAt("");
+    setSkipStockMovement(false);
   }
 
   if (receipt) {
@@ -505,6 +526,49 @@ export function NewSaleClient({
         ) : null}
       </div>
 
+      {/* Carga histórica: solo admin — fecha pasada + opción de no tocar stock */}
+      {isAdmin && !isFreeSale ? (
+        <div className="flex flex-col gap-2 px-4 md:px-6">
+          <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3">
+            <div className="flex items-center gap-2">
+              <History className="size-4 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium">Carga histórica</p>
+                <p className="text-xs text-muted-foreground">Registrar una venta con fecha pasada</p>
+              </div>
+            </div>
+            <Switch checked={isHistorical} onCheckedChange={setIsHistorical} />
+          </div>
+
+          {isHistorical ? (
+            <div className="flex flex-col gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3.5">
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm">Fecha y hora de la venta</Label>
+                <Input
+                  type="datetime-local"
+                  value={historicalSoldAt}
+                  onChange={(e) => setHistoricalSoldAt(e.target.value)}
+                />
+              </div>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={skipStockMovement}
+                  onChange={(e) => setSkipStockMovement(e.target.checked)}
+                />
+                <span>
+                  No descontar del stock real
+                  <span className="block text-xs text-muted-foreground">
+                    Para cargar ventas ya despachadas hace tiempo, cuyo stock actual ya no las refleja.
+                  </span>
+                </span>
+              </label>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* Medio de pago (no aplica a venta sin costo) */}
       {!isFreeSale ? (
         <div className="flex flex-col gap-2 px-4 md:px-6">
@@ -572,7 +636,8 @@ export function NewSaleClient({
                 !quote?.ok ||
                 confirming ||
                 cartItems.length === 0 ||
-                (isFreeSale && !freeSaleReason)
+                (isFreeSale && !freeSaleReason) ||
+                (isHistorical && !historicalSoldAt)
               }
               onClick={handleConfirm}
             >
@@ -693,6 +758,9 @@ function ReceiptView({ receipt, onNewSale }: { receipt: CreateSaleResult; onNewS
           {receipt.is_free_sale ? "Entrega sin costo registrada" : "Venta registrada"}
         </h1>
         <p className="text-sm text-muted-foreground">{receipt.sale_number}</p>
+        {receipt.stock_skipped ? (
+          <p className="mt-1 text-xs text-warning-foreground">Carga histórica — no se descontó del stock real.</p>
+        ) : null}
       </div>
 
       <div className="w-full rounded-xl border border-border bg-card p-5 text-left shadow-sm">

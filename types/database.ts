@@ -183,6 +183,7 @@ export type SaleRow = {
   is_free_sale: boolean;
   free_sale_reason: FreeSaleReason | null;
   free_sale_notes: string | null;
+  stock_skipped: boolean;
 };
 
 export type SaleItemRow = {
@@ -362,6 +363,7 @@ export type CreateSaleResult = {
   applied_price_condition_name: string | null;
   explanation: string;
   is_free_sale?: boolean;
+  stock_skipped?: boolean;
   lines: PricingLine[];
 };
 
@@ -572,6 +574,7 @@ export type Database = {
           p_is_free_sale?: boolean;
           p_free_sale_reason?: FreeSaleReason | null;
           p_free_sale_notes?: string | null;
+          p_skip_stock_movement?: boolean;
         };
         Returns: CreateSaleResult;
       };

@@ -62,6 +62,7 @@ export function SalesTable({ rows }: { rows: Row[] }) {
                   <div className="flex flex-wrap gap-1">
                     <SaleStatusBadge status={sale.status} />
                     {sale.is_free_sale ? <Badge variant="secondary">Sin costo</Badge> : null}
+                    {sale.stock_skipped ? <Badge variant="outline">Sin stock</Badge> : null}
                   </div>
                 </TableCell>
               </TableRow>

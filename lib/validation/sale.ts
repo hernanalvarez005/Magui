@@ -22,10 +22,20 @@ export const newSaleSchema = z
     is_free_sale: z.boolean().optional().default(false),
     free_sale_reason: freeSaleReasonSchema.nullable().optional(),
     free_sale_notes: z.string().max(300).nullable().optional(),
+    // Carga histórica (admin): fecha pasada + opción de no tocar stock real.
+    // El backend es la autoridad final (solo admin, y valida el rango de
+    // fechas contra los precios vigentes) — esto es solo defensa en
+    // profundidad en el cliente.
+    sold_at: z.string().datetime({ offset: true }).nullable().optional(),
+    skip_stock_movement: z.boolean().optional().default(false),
   })
   .refine((data) => !data.is_free_sale || !!data.free_sale_reason, {
     message: "Elegí un motivo para la entrega sin costo.",
     path: ["free_sale_reason"],
+  })
+  .refine((data) => !data.skip_stock_movement || !data.is_free_sale, {
+    message: "Una entrega sin costo siempre descuenta stock.",
+    path: ["skip_stock_movement"],
   });
 
 export type NewSaleInput = z.infer<typeof newSaleSchema>;

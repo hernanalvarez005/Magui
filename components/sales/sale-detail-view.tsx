@@ -69,6 +69,7 @@ export function SaleDetailView({
               <Badge variant="success">Confirmada</Badge>
             )}
             {sale.is_free_sale ? <Badge variant="secondary">Sin costo · {FREE_SALE_LABELS[sale.free_sale_reason ?? "OTHER"]}</Badge> : null}
+            {sale.stock_skipped ? <Badge variant="outline">Carga histórica · sin stock</Badge> : null}
           </div>
           <p className="text-sm text-muted-foreground">{formatDateTime(sale.sold_at)}</p>
         </div>

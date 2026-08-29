@@ -46,6 +46,7 @@ export default async function NewSalePage() {
       paymentMethods={paymentMethods ?? []}
       doctors={doctors ?? []}
       products={products ?? []}
+      isAdmin={profile.role === "admin"}
     />
   );
 }
