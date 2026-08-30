@@ -30,9 +30,17 @@ export default async function SalesListPage(props: PageProps<"/ventas">) {
   const rawStatus = typeof searchParams.status === "string" ? searchParams.status : undefined;
   const status = rawStatus === "confirmed" || rawStatus === "cancelled" ? rawStatus : undefined;
 
+  // Columnas explícitas: SalesTable y los mapeos de abajo (locationIds,
+  // sellerIds, etc.) solo usan estas 14 — la tabla tiene 26 en total
+  // (subtotal, notes, external_source/order_id, cancellation_reason,
+  // created_at/updated_at, etc. quedan afuera). El detalle de una venta
+  // puntual (/ventas/[id]) sí necesita todo, ahí select("*") es correcto.
   let query = supabase
     .from("sales")
-    .select("*", { count: "exact" })
+    .select(
+      "id, sale_number, sold_at, location_id, sales_channel_id, seller_id, customer_id, doctor_id, payment_method_id, total, commission_total, status, is_free_sale, stock_skipped",
+      { count: "exact" }
+    )
     .order("sold_at", { ascending: false })
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 

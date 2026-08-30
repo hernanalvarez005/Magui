@@ -12,7 +12,29 @@ import {
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import type { SaleRow } from "@/types/database";
 
-interface Row extends SaleRow {
+// Solo los campos que esta tabla (y el mapeo de page.tsx) realmente usa —
+// la query en app/(app)/ventas/page.tsx pide exactamente estas columnas de
+// `sales`, no select("*"). El tipo completo (SaleRow, 28 columnas) sigue
+// siendo correcto para el detalle de una venta puntual.
+type SaleListFields = Pick<
+  SaleRow,
+  | "id"
+  | "sale_number"
+  | "sold_at"
+  | "location_id"
+  | "sales_channel_id"
+  | "seller_id"
+  | "customer_id"
+  | "doctor_id"
+  | "payment_method_id"
+  | "total"
+  | "commission_total"
+  | "status"
+  | "is_free_sale"
+  | "stock_skipped"
+>;
+
+interface Row extends SaleListFields {
   location?: { code: string; name: string };
   channel?: { name: string };
   seller?: { full_name: string };

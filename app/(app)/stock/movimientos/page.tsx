@@ -38,9 +38,15 @@ export default async function StockMovementsPage(props: PageProps<"/stock/movimi
   const from = typeof searchParams.from === "string" ? searchParams.from : undefined;
   const to = typeof searchParams.to === "string" ? searchParams.to : undefined;
 
+  // Columnas explícitas: MovementsTable no usa transfer_id, notes ni
+  // created_at (la tabla completa tiene 13 columnas, acá van 10). El
+  // export CSV (api/export/movimientos) sí necesita todo, no se tocó.
   let query = supabase
     .from("stock_movements")
-    .select("*", { count: "exact" })
+    .select(
+      "id, occurred_at, location_id, product_id, movement_type, quantity_delta, sale_id, reference, reason, created_by",
+      { count: "exact" }
+    )
     .order("occurred_at", { ascending: false })
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 

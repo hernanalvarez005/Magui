@@ -13,7 +13,25 @@ import { formatDateTime } from "@/lib/utils";
 import { TYPE_LABELS } from "@/components/inventory/movement-filters";
 import type { StockMovementRow } from "@/types/database";
 
-interface Row extends StockMovementRow {
+// Solo los campos que esta tabla usa — la query en
+// app/(app)/stock/movimientos/page.tsx pide exactamente estas 10 columnas
+// de stock_movements, no select("*") (13 en total; transfer_id, notes y
+// created_at quedan afuera). El export CSV sí sigue pidiendo todo.
+type StockMovementListFields = Pick<
+  StockMovementRow,
+  | "id"
+  | "occurred_at"
+  | "location_id"
+  | "product_id"
+  | "movement_type"
+  | "quantity_delta"
+  | "sale_id"
+  | "reference"
+  | "reason"
+  | "created_by"
+>;
+
+interface Row extends StockMovementListFields {
   product?: { name: string; sku: string };
   location?: { code: string; name: string };
   user?: { full_name: string };
