@@ -138,7 +138,9 @@ export default async function SalesListPage(props: PageProps<"/ventas">) {
         <div>
           <h1 className="text-xl font-semibold">Ventas</h1>
           <p className="text-sm text-muted-foreground">
-            {profile.role === "admin" ? "Ventas de las sucursales a las que tenés acceso." : "Tus ventas recientes."}
+            {profile.role === "admin" || profile.role === "viewer"
+              ? "Ventas de las sucursales a las que tenés acceso."
+              : "Tus ventas recientes."}
           </p>
         </div>
         {profile.role === "admin" ? (

@@ -2,7 +2,7 @@
 // (no hay proyecto Supabase en vivo todavía para correr `supabase gen types`).
 // Mantener sincronizado con el esquema. Formato compatible con @supabase/supabase-js v2.
 
-export type AppRole = "admin" | "seller";
+export type AppRole = "admin" | "seller" | "viewer";
 export type StockLocationType = "branch" | "warehouse";
 export type ProductType = "product" | "accessory" | "kit";
 export type PriceRuleType = "BASE" | "PAYMENT_METHOD" | "QUANTITY";

@@ -86,8 +86,8 @@ export function UsersTable({ users, locations }: { users: UserRow[]; locations: 
                   {u.email ? <p className="text-xs text-muted-foreground">{u.email}</p> : null}
                 </TableCell>
                 <TableCell>
-                  <Badge variant={u.role === "admin" ? "default" : "secondary"}>
-                    {u.role === "admin" ? "Admin" : "Vendedora"}
+                  <Badge variant={u.role === "admin" ? "default" : u.role === "viewer" ? "outline" : "secondary"}>
+                    {u.role === "admin" ? "Admin" : u.role === "viewer" ? "Observador" : "Vendedora"}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
@@ -149,6 +149,19 @@ function EditUserDialog({
   const [active, setActive] = useState(user.active);
   const [canViewFinancial, setCanViewFinancial] = useState(user.can_view_financial_reports);
   const [canAdjustStock, setCanAdjustStock] = useState(user.can_adjust_stock);
+  const isViewer = role === "viewer";
+
+  // Observador (solo lectura): siempre ve reportes, nunca ajusta stock — no
+  // son "permisos configurables" para este rol, van implícitos. Se fuerzan
+  // acá (además de en el backend, cinturón y tirantes) para que no quede una
+  // combinación contradictoria guardada por accidente.
+  function handleRoleChange(next: AppRole) {
+    setRole(next);
+    if (next === "viewer") {
+      setCanViewFinancial(true);
+      setCanAdjustStock(false);
+    }
+  }
   const [locationIds, setLocationIds] = useState<string[]>(user.locationIds);
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -298,16 +311,24 @@ function EditUserDialog({
 
           <div className="flex items-center justify-between">
             <Label>Rol</Label>
-            <Select value={role} onValueChange={(v) => setRole(v as AppRole)}>
-              <SelectTrigger className="w-40">
+            <Select value={role} onValueChange={(v) => handleRoleChange(v as AppRole)}>
+              <SelectTrigger className="w-44">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="seller">Vendedora</SelectItem>
                 <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="viewer">Observador (solo lectura)</SelectItem>
               </SelectContent>
             </Select>
           </div>
+          {isViewer ? (
+            <p className="-mt-2 text-xs text-muted-foreground">
+              Ve dashboard, reportes, ventas, stock y clientes en las sedes que le asignes abajo. Nunca puede
+              cargar ni anular ventas, ajustar stock, ni editar precios o promociones — ni desde acá ni desde
+              la app.
+            </p>
+          ) : null}
 
           <div className="flex items-center justify-between">
             <Label>Usuario activo</Label>
@@ -322,12 +343,12 @@ function EditUserDialog({
 
           <div className="flex items-center justify-between">
             <Label>Ve reportes financieros</Label>
-            <Switch checked={canViewFinancial} onCheckedChange={setCanViewFinancial} />
+            <Switch checked={canViewFinancial} disabled={isViewer} onCheckedChange={setCanViewFinancial} />
           </div>
 
           <div className="flex items-center justify-between">
             <Label>Puede ajustar stock</Label>
-            <Switch checked={canAdjustStock} onCheckedChange={setCanAdjustStock} />
+            <Switch checked={canAdjustStock} disabled={isViewer} onCheckedChange={setCanAdjustStock} />
           </div>
 
           <div className="flex flex-col gap-2">
@@ -423,15 +444,22 @@ function CreateUserDialog({
           <div className="flex items-center justify-between">
             <Label>Rol</Label>
             <Select value={form.role} onValueChange={(v) => setForm((f) => ({ ...f, role: v as AppRole }))}>
-              <SelectTrigger className="w-40">
+              <SelectTrigger className="w-44">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="seller">Vendedora</SelectItem>
                 <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="viewer">Observador (solo lectura)</SelectItem>
               </SelectContent>
             </Select>
           </div>
+          {form.role === "viewer" ? (
+            <p className="-mt-1 text-xs text-muted-foreground">
+              Ve dashboard, reportes, ventas, stock y clientes en las sedes que le asignes abajo. Nunca puede
+              cargar ventas ni escribir nada.
+            </p>
+          ) : null}
           <div className="flex flex-col gap-2">
             <Label>Sucursales con acceso</Label>
             {locations.map((l) => (

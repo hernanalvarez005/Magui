@@ -39,11 +39,14 @@ export function CustomersView({
   initialQuery,
   showInactive,
   isAdmin,
+  canWrite,
 }: {
   initialCustomers: Customer[];
   initialQuery: string;
   showInactive: boolean;
   isAdmin: boolean;
+  /** false para el rol viewer (solo lectura) — sigue pudiendo abrir la ficha, nunca guardar. */
+  canWrite: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -75,9 +78,11 @@ export function CustomersView({
             onChange={(e) => search(e.target.value)}
           />
         </div>
-        <Button onClick={() => setEditing("new")}>
-          <Plus /> Cliente
-        </Button>
+        {canWrite ? (
+          <Button onClick={() => setEditing("new")}>
+            <Plus /> Cliente
+          </Button>
+        ) : null}
       </div>
 
       {isAdmin ? (
@@ -121,6 +126,7 @@ export function CustomersView({
         <CustomerDialog
           customer={editing === "new" ? null : editing}
           isAdmin={isAdmin}
+          canWrite={canWrite}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -135,11 +141,13 @@ export function CustomersView({
 function CustomerDialog({
   customer,
   isAdmin,
+  canWrite,
   onClose,
   onSaved,
 }: {
   customer: Customer | null;
   isAdmin: boolean;
+  canWrite: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -269,12 +277,20 @@ function CustomerDialog({
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
             <Label>Nombre y apellido</Label>
-            <Input value={form.full_name} onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))} />
+            <Input
+              disabled={!canWrite}
+              value={form.full_name}
+              onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label>DNI</Label>
-              <Input value={form.dni} onChange={(e) => setForm((f) => ({ ...f, dni: e.target.value }))} />
+              <Input
+                disabled={!canWrite}
+                value={form.dni}
+                onChange={(e) => setForm((f) => ({ ...f, dni: e.target.value }))}
+              />
             </div>
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between gap-2">
@@ -290,16 +306,25 @@ function CustomerDialog({
                   </a>
                 ) : null}
               </div>
-              <Input value={form.whatsapp} onChange={(e) => setForm((f) => ({ ...f, whatsapp: e.target.value }))} />
+              <Input
+                disabled={!canWrite}
+                value={form.whatsapp}
+                onChange={(e) => setForm((f) => ({ ...f, whatsapp: e.target.value }))}
+              />
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Email</Label>
-            <Input value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+            <Input
+              disabled={!canWrite}
+              value={form.email}
+              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Notas</Label>
             <Textarea
+              disabled={!canWrite}
               rows={2}
               value={form.notes}
               onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
@@ -307,7 +332,12 @@ function CustomerDialog({
           </div>
           {customer ? (
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+              <input
+                type="checkbox"
+                disabled={!canWrite}
+                checked={active}
+                onChange={(e) => setActive(e.target.checked)}
+              />
               Cliente activo
             </label>
           ) : null}
@@ -354,7 +384,7 @@ function CustomerDialog({
         </div>
 
         <DialogFooter className="sm:justify-between">
-          {isAdmin && customer ? (
+          {isAdmin && canWrite && customer ? (
             <Button
               variant="outline"
               className="text-destructive hover:text-destructive"
@@ -364,13 +394,21 @@ function CustomerDialog({
             </Button>
           ) : null}
           <div className="flex gap-2">
-            <Button variant="ghost" onClick={onClose}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 className="animate-spin" /> : null}
-              Guardar
-            </Button>
+            {canWrite ? (
+              <>
+                <Button variant="ghost" onClick={onClose}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleSave} disabled={saving}>
+                  {saving ? <Loader2 className="animate-spin" /> : null}
+                  Guardar
+                </Button>
+              </>
+            ) : (
+              <Button variant="ghost" onClick={onClose}>
+                Cerrar
+              </Button>
+            )}
           </div>
         </DialogFooter>
       </DialogContent>

@@ -22,7 +22,9 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   { href: "/", label: "Inicio", icon: LayoutDashboard, mobile: true },
-  { href: "/ventas/nueva", label: "Nueva venta", icon: ShoppingBag, mobile: true },
+  // Nueva venta es la única acción de escritura en la barra de navegación —
+  // el rol viewer (modo observador, solo lectura) nunca la ve.
+  { href: "/ventas/nueva", label: "Nueva venta", icon: ShoppingBag, mobile: true, roles: ["admin", "seller"] },
   { href: "/ventas", label: "Ventas", icon: BarChart3, mobile: true },
   { href: "/stock", label: "Stock", icon: Package, mobile: true },
   { href: "/stock/movimientos", label: "Movimientos", icon: History },

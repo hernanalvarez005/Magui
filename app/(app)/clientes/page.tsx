@@ -39,6 +39,7 @@ export default async function CustomersPage(props: PageProps<"/clientes">) {
         initialQuery={q ?? ""}
         showInactive={showInactive}
         isAdmin={profile.role === "admin"}
+        canWrite={profile.role !== "viewer"}
       />
 
       {(!customers || customers.length === 0) && q ? (

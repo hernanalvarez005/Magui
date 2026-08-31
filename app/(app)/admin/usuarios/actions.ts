@@ -143,7 +143,7 @@ const createUserSchema = z.object({
   email: z.string().trim().email(),
   password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres."),
   fullName: z.string().trim().min(2),
-  role: z.enum(["admin", "seller"]),
+  role: z.enum(["admin", "seller", "viewer"]),
   locationIds: z.array(z.string().uuid()),
 });
 
@@ -187,9 +187,17 @@ export async function createUserAction(input: z.infer<typeof createUserSchema>):
   const userId = created.user.id;
 
   // El trigger handle_new_auth_user ya creó profiles(role='seller', active=false).
+  // Un viewer (modo observador) siempre ve reportes financieros — es lo que
+  // vino a hacer — así que se fuerza acá para no depender de que alguien
+  // marque el switch a mano al crearlo.
   const { error: updateError } = await serviceClient
     .from("profiles")
-    .update({ role: parsed.data.role, active: true, full_name: parsed.data.fullName })
+    .update({
+      role: parsed.data.role,
+      active: true,
+      full_name: parsed.data.fullName,
+      ...(parsed.data.role === "viewer" ? { can_view_financial_reports: true, can_adjust_stock: false } : {}),
+    })
     .eq("id", userId);
 
   if (updateError) {

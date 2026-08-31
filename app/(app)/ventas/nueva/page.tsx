@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
 import { getCurrentProfile } from "@/lib/auth/get-profile";
 import { createClient } from "@/lib/supabase/server";
@@ -9,6 +10,14 @@ export const metadata: Metadata = { title: "Nueva venta" };
 
 export default async function NewSalePage() {
   const profile = await getCurrentProfile();
+
+  // Defensa en profundidad: el rol viewer (solo lectura) ya no ve este link
+  // en la navegación, y create_sale lo rechaza en el backend — esto evita
+  // además que llegue por URL directa a un formulario que no va a poder usar.
+  if (profile.role === "viewer") {
+    redirect("/ventas");
+  }
+
   const supabase = await createClient();
 
   const [

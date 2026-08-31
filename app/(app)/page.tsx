@@ -12,7 +12,9 @@ import { formatCurrency, formatDateTime, todayInBuenosAires } from "@/lib/utils"
 export default async function HomePage() {
   const profile = await getCurrentProfile();
 
-  if (profile.role === "admin") {
+  // El observador (viewer) quiere ver la gestión agregada, no "mis ventas de
+  // hoy" (no tiene ventas propias) — mismo destino que admin.
+  if (profile.role === "admin" || profile.role === "viewer") {
     redirect("/dashboard");
   }
 

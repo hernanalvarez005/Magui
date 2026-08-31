@@ -106,7 +106,7 @@ export function AppShell({
               <DropdownMenuLabel>
                 <p className="font-medium">{fullName}</p>
                 <p className="text-xs font-normal text-muted-foreground">
-                  {role === "admin" ? "Administrador/a" : "Vendedora"}
+                  {role === "admin" ? "Administrador/a" : role === "viewer" ? "Observador/a (solo lectura)" : "Vendedora"}
                 </p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
