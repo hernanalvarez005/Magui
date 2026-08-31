@@ -17,16 +17,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 import { newCustomerSchema } from "@/lib/validation/sale";
+import { normalizeDni } from "@/lib/utils";
 
 export interface CustomerOption {
   id: string;
   full_name: string;
   dni: string | null;
   whatsapp: string | null;
-}
-
-function normalizeDni(value: string) {
-  return value.replace(/[^0-9]/g, "");
 }
 
 export function CustomerPickerDialog({
@@ -230,7 +227,12 @@ export function CustomerPickerDialog({
                   inputMode="numeric"
                   placeholder="Ej: 32123456"
                   value={dni}
-                  onChange={(e) => setDni(e.target.value)}
+                  // Sin onPaste ni onKeyDown restrictivos: escribir, pegar
+                  // (Ctrl+V/Cmd+V/"Pegar" en mobile) todo pasa por acá. Se
+                  // normaliza en el momento (saca puntos/espacios de
+                  // "32.123.456" o "32 123 456") para que quede
+                  // "32123456" sin que el usuario tenga que editarlo a mano.
+                  onChange={(e) => setDni(normalizeDni(e.target.value))}
                 />
                 {dniStatus === "searching" ? (
                   <Loader2 className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />

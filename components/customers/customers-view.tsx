@@ -20,7 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createClient } from "@/lib/supabase/client";
 import { newCustomerSchema } from "@/lib/validation/sale";
-import { formatCurrency, formatDate, formatDateTime, whatsAppLink } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime, normalizeDni, whatsAppLink } from "@/lib/utils";
 import type { CustomerPurchaseHistoryEntry } from "@/types/database";
 
 interface Customer {
@@ -288,8 +288,9 @@ function CustomerDialog({
               <Label>DNI</Label>
               <Input
                 disabled={!canWrite}
+                inputMode="numeric"
                 value={form.dni}
-                onChange={(e) => setForm((f) => ({ ...f, dni: e.target.value }))}
+                onChange={(e) => setForm((f) => ({ ...f, dni: normalizeDni(e.target.value) }))}
               />
             </div>
             <div className="flex flex-col gap-1.5">

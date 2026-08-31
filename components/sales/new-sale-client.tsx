@@ -65,6 +65,17 @@ interface PaymentMethodOption {
   code: string;
   name: string;
 }
+interface PaymentAccountOption {
+  id: string;
+  code: string;
+  name: string;
+}
+
+// Formas de pago que la cuenta de ingreso vuelve obligatoria y que
+// disparan facturación pendiente (sección 4/5 del pedido) — el backend
+// (fn_create_sale_core) vuelve a decidir esto de forma independiente, esto
+// es solo para mostrar/ocultar el selector en el momento justo.
+const ACCOUNT_REQUIRED_CODES = ["TRANSFER", "CARD_1", "CARD_3"];
 interface DoctorOption {
   id: string;
   code: string;
@@ -115,6 +126,7 @@ export function NewSaleClient({
   locations,
   channels,
   paymentMethods,
+  paymentAccounts,
   doctors,
   products,
   promotions,
@@ -124,6 +136,7 @@ export function NewSaleClient({
   locations: LocationOption[];
   channels: ChannelOption[];
   paymentMethods: PaymentMethodOption[];
+  paymentAccounts: PaymentAccountOption[];
   doctors: DoctorOption[];
   products: ProductOption[];
   promotions: PromotionOption[];
@@ -135,6 +148,7 @@ export function NewSaleClient({
   const [channelId, setChannelId] = useState(branchChannel?.id ?? "");
   const [locationId, setLocationId] = useState(locations[0]?.id ?? "");
   const [paymentMethodId, setPaymentMethodId] = useState(paymentMethods[0]?.id ?? "");
+  const [paymentAccountId, setPaymentAccountId] = useState("");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [search, setSearch] = useState("");
   const [customer, setCustomer] = useState<CustomerOption | null>(null);
@@ -221,6 +235,20 @@ export function NewSaleClient({
       cancelled = true;
     };
   }, [locationId, supabase]);
+
+  // Cuenta de ingreso: obligatoria solo para transferencia/1 pago/3 cuotas,
+  // nunca para efectivo ni venta sin costo (sección 4/9 del pedido). El
+  // backend (fn_create_sale_core) vuelve a decidir esto de forma
+  // independiente — esto es solo para mostrar/pedir el campo en el momento
+  // justo, nunca la fuente de verdad.
+  const selectedPaymentMethod = paymentMethods.find((pm) => pm.id === paymentMethodId);
+  const requiresPaymentAccount = !isFreeSale && ACCOUNT_REQUIRED_CODES.includes(selectedPaymentMethod?.code ?? "");
+
+  function handlePaymentMethodChange(id: string) {
+    setPaymentMethodId(id);
+    const code = paymentMethods.find((pm) => pm.id === id)?.code ?? "";
+    if (!ACCOUNT_REQUIRED_CODES.includes(code)) setPaymentAccountId("");
+  }
 
   const cartItems = useMemo(
     () =>
@@ -326,6 +354,16 @@ export function NewSaleClient({
       return;
     }
 
+    if (requiresPaymentAccount && !paymentAccountId) {
+      toast.error("Elegí la cuenta donde ingresó el dinero.");
+      return;
+    }
+
+    if (requiresPaymentAccount && !customer?.dni) {
+      toast.error("Esta operación se puede facturar — necesita un cliente identificado con nombre y DNI.");
+      return;
+    }
+
     const payload = {
       items: cartItems,
       location_id: locationId,
@@ -362,6 +400,7 @@ export function NewSaleClient({
       p_free_sale_notes: parsed.data.free_sale_notes,
       ...(parsed.data.sold_at ? { p_sold_at: parsed.data.sold_at } : {}),
       p_skip_stock_movement: parsed.data.skip_stock_movement,
+      p_payment_account_id: requiresPaymentAccount ? paymentAccountId : null,
     });
     setConfirming(false);
 
@@ -377,6 +416,7 @@ export function NewSaleClient({
   function resetForNewSale() {
     setCart({});
     setCustomer(null);
+    setPaymentAccountId("");
     setDoctorId("none");
     setNotes("");
     setQuote(null);
@@ -469,8 +509,19 @@ export function NewSaleClient({
             onClick={() => setCustomerDialogOpen(true)}
           >
             <User className="size-4 shrink-0 text-muted-foreground" />
-            <span className="truncate">{customer ? customer.full_name : "Agregar cliente (opcional)"}</span>
+            <span className="truncate">
+              {customer
+                ? customer.full_name
+                : requiresPaymentAccount
+                  ? "Agregar cliente (obligatorio para facturar)"
+                  : "Agregar cliente (opcional)"}
+            </span>
           </Button>
+          {customer && requiresPaymentAccount && !customer.dni ? (
+            <Badge variant="destructive" className="shrink-0">
+              Falta DNI
+            </Badge>
+          ) : null}
           {customer ? (
             <Button
               type="button"
@@ -703,7 +754,7 @@ export function NewSaleClient({
                     <button
                       key={pm.id}
                       type="button"
-                      onClick={() => setPaymentMethodId(pm.id)}
+                      onClick={() => handlePaymentMethodChange(pm.id)}
                       className={cn(
                         "flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl border-2 px-2 py-2.5 text-center text-xs font-medium leading-tight transition-colors",
                         active
@@ -717,6 +768,32 @@ export function NewSaleClient({
                   );
                 })}
               </div>
+
+              {/*
+                Cuenta de ingreso: solo aparece para transferencia/1 pago/3
+                cuotas — para efectivo (o venta sin costo, ya oculto arriba)
+                queda directamente afuera del formulario, no solo deshabilitado.
+              */}
+              {requiresPaymentAccount ? (
+                <div className="flex flex-col gap-1.5 pt-1">
+                  <Label className="text-sm">Cuenta donde ingresó el dinero</Label>
+                  <Select value={paymentAccountId} onValueChange={setPaymentAccountId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Elegí la cuenta" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {paymentAccounts.map((pa) => (
+                        <SelectItem key={pa.id} value={pa.id}>
+                          {pa.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Esta operación va a quedar pendiente de facturación — necesita cliente con DNI.
+                  </p>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -730,7 +807,9 @@ export function NewSaleClient({
                 confirming ||
                 cartItems.length === 0 ||
                 (isFreeSale && !freeSaleReason) ||
-                (isHistorical && !historicalSoldAt)
+                (isHistorical && !historicalSoldAt) ||
+                (requiresPaymentAccount && !paymentAccountId) ||
+                (requiresPaymentAccount && !customer?.dni)
               }
               onClick={handleConfirm}
             >

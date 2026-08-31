@@ -24,6 +24,7 @@ export default async function NewSalePage() {
     { data: locations },
     { data: channels },
     { data: paymentMethods },
+    { data: paymentAccounts },
     { data: doctors },
     { data: products },
     { data: kitComponents },
@@ -37,6 +38,7 @@ export default async function NewSalePage() {
       .order("name"),
     supabase.from("sales_channels").select("id, code, name").eq("active", true).order("sort_order"),
     supabase.from("payment_methods").select("id, code, name").eq("active", true).order("sort_order"),
+    supabase.from("payment_accounts").select("id, code, name").eq("active", true).order("sort_order"),
     supabase.from("doctors").select("id, code, full_name").eq("active", true).order("full_name"),
     supabase
       .from("products")
@@ -77,6 +79,7 @@ export default async function NewSalePage() {
       locations={locations}
       channels={channels ?? []}
       paymentMethods={paymentMethods ?? []}
+      paymentAccounts={paymentAccounts ?? []}
       doctors={doctors ?? []}
       products={(products ?? []).map((p) => ({ ...p, kitContents: kitContents.get(p.id) ?? null }))}
       promotions={promotions ?? []}

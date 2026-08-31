@@ -82,6 +82,17 @@ export function whatsAppLink(raw: string | null | undefined): string | null {
   return `https://wa.me/${digits}`;
 }
 
+/**
+ * Deja solo dígitos ("32.123.456" o "32 123 456" -> "32123456") — mismo
+ * criterio que fn_normalize_dni() en la base. Se usa en el propio onChange
+ * de los inputs de DNI (nunca en un onPaste separado: pegar ya dispara
+ * onChange, así que alcanza con esto para cubrir escribir y pegar por igual,
+ * sin bloquear ningún evento).
+ */
+export function normalizeDni(value: string): string {
+  return value.replace(/[^0-9]/g, "");
+}
+
 /** Fecha de "hoy" en zona horaria de negocio, como YYYY-MM-DD, para filtros de reportes. */
 export function todayInBuenosAires(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {

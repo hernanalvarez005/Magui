@@ -81,6 +81,15 @@ export type PaymentMethodRow = {
   updated_at: string;
 };
 
+export type PaymentAccountRow = {
+  id: string;
+  code: string;
+  name: string;
+  active: boolean;
+  sort_order: number;
+  created_at: string;
+};
+
 export type ProductRow = {
   id: string;
   sku: string;
@@ -185,7 +194,14 @@ export type SaleRow = {
   free_sale_reason: FreeSaleReason | null;
   free_sale_notes: string | null;
   stock_skipped: boolean;
+  payment_account_id: string | null;
+  billing_status: SaleBillingStatus;
+  invoiced_at: string | null;
+  invoiced_by: string | null;
 };
+
+/** NUNCA un booleano: existe un tercer caso real (no requiere control de facturación). */
+export type SaleBillingStatus = "NOT_REQUIRED" | "PENDING" | "INVOICED";
 
 export type SaleItemRow = {
   id: string;
@@ -372,6 +388,7 @@ export type CreateSaleResult = {
   explanation: string;
   is_free_sale?: boolean;
   stock_skipped?: boolean;
+  billing_status?: SaleBillingStatus;
   lines: PricingLine[];
 };
 
@@ -477,6 +494,12 @@ export type Database = {
         Row: PaymentMethodRow;
         Insert: { code: string; name: string } & Partial<PaymentMethodRow>;
         Update: Partial<PaymentMethodRow>;
+        Relationships: [];
+      };
+      payment_accounts: {
+        Row: PaymentAccountRow;
+        Insert: { code: string; name: string } & Partial<PaymentAccountRow>;
+        Update: Partial<PaymentAccountRow>;
         Relationships: [];
       };
       products: {
@@ -596,12 +619,21 @@ export type Database = {
           p_free_sale_reason?: FreeSaleReason | null;
           p_free_sale_notes?: string | null;
           p_skip_stock_movement?: boolean;
+          p_payment_account_id?: string | null;
         };
         Returns: CreateSaleResult;
       };
       cancel_sale: {
         Args: { p_sale_id: string; p_reason: string };
         Returns: { sale_id: string; status: "cancelled" };
+      };
+      mark_sale_invoiced: {
+        Args: { p_sale_id: string };
+        Returns: { sale_id: string; billing_status: "INVOICED" };
+      };
+      mark_sale_pending: {
+        Args: { p_sale_id: string };
+        Returns: { sale_id: string; billing_status: "PENDING" };
       };
       transfer_stock: {
         Args: {
