@@ -190,11 +190,14 @@ select is(
 -- ---------------------------------------------------------------------------
 select set_stock((select id from stock_locations where code = 'DEP'), (select id from products where sku = 'PROD-VITC'), 10, 'RECEPTION');
 
+-- Efectivo (no transferencia): esta venta no necesita ejercitar la regla de
+-- facturación pendiente del Bloque A (cuenta de ingreso + cliente con DNI) —
+-- lo que se prueba acá es el snapshot de promociones, no facturación.
 select (create_sale(
   jsonb_build_array(jsonb_build_object('product_id', (select id from products where sku = 'PROD-VITC'), 'quantity', 1)),
   (select id from stock_locations where code = 'DEP'),
   (select id from sales_channels limit 1),
-  (select id from payment_methods where code = 'TRANSFER')
+  (select id from payment_methods where code = 'CASH')
 ) ->> 'sale_id')::uuid as new_sale_id \gset
 
 select is(
