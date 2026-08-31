@@ -30,6 +30,7 @@ interface Promotion {
   code: string;
   name: string;
   type: PromotionType;
+  price_condition_id: string;
   discount_percent: string | null;
   group_size: number;
   priority: number;
@@ -41,18 +42,52 @@ interface Promotion {
   productIds: string[];
 }
 
+export interface PriceConditionOption {
+  id: string;
+  name: string;
+}
+
 const TYPE_BADGE: Record<PromotionType, string> = {
   THREE_FOR_TWO: "3x2",
   DUO_PERCENT: "Duo %",
   KIT_PERCENT: "Kit %",
 };
 
+type PromoLifecycle = "programada" | "activa" | "finalizada" | "desactivada";
+
+const LIFECYCLE_LABEL: Record<PromoLifecycle, string> = {
+  programada: "Programada",
+  activa: "Activa",
+  finalizada: "Finalizada",
+  desactivada: "Desactivada",
+};
+
+const LIFECYCLE_VARIANT: Record<PromoLifecycle, "secondary" | "success" | "outline" | "warning"> = {
+  programada: "outline",
+  activa: "success",
+  finalizada: "secondary",
+  desactivada: "warning",
+};
+
+// active = true AND starts_at <= now AND ends_at >= now (sección 9 del pedido).
+// Es solo la etiqueta visual del listado — la elegibilidad real la decide
+// siempre fn_apply_promotions en el servidor contra sold_at.
+function lifecycle(p: Promotion): PromoLifecycle {
+  if (!p.active) return "desactivada";
+  const now = Date.now();
+  if (new Date(p.valid_from).getTime() > now) return "programada";
+  if (p.valid_until && new Date(p.valid_until).getTime() <= now) return "finalizada";
+  return "activa";
+}
+
 export function PromotionsTable({
   promotions,
   products,
+  priceConditions,
 }: {
   promotions: Promotion[];
   products: ProductCandidate[];
+  priceConditions: PriceConditionOption[];
 }) {
   const router = useRouter();
   const [overrides, setOverrides] = useState<Record<string, Partial<Promotion>>>({});
@@ -60,6 +95,7 @@ export function PromotionsTable({
   const [editing, setEditing] = useState<Promotion | "new" | null>(null);
   const rows = promotions.map((p) => ({ ...p, ...overrides[p.id] }));
   const nameById = new Map(products.map((p) => [p.id, p]));
+  const conditionNameById = new Map(priceConditions.map((c) => [c.id, c.name]));
 
   async function toggleActive(id: string, active: boolean) {
     if (!active) {
@@ -95,10 +131,12 @@ export function PromotionsTable({
           <TableHeader>
             <TableRow>
               <TableHead>Promoción</TableHead>
+              <TableHead>Condición base</TableHead>
               <TableHead>Productos</TableHead>
               <TableHead className="text-right">Prioridad</TableHead>
               <TableHead>Combinable</TableHead>
               <TableHead>Vigencia</TableHead>
+              <TableHead>Estado</TableHead>
               <TableHead>Activa</TableHead>
               <TableHead className="text-right">Editar</TableHead>
             </TableRow>
@@ -121,6 +159,9 @@ export function PromotionsTable({
                     </p>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
+                    {conditionNameById.get(p.price_condition_id) ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
                     {p.productIds.map((id) => nameById.get(id)?.sku ?? "?").join(", ") || "—"}
                   </TableCell>
                   <TableCell className="text-right">{p.priority}</TableCell>
@@ -129,6 +170,9 @@ export function PromotionsTable({
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {formatDate(p.valid_from)} — {p.valid_until ? formatDate(p.valid_until) : "sin fin"}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={LIFECYCLE_VARIANT[lifecycle(p)]}>{LIFECYCLE_LABEL[lifecycle(p)]}</Badge>
                   </TableCell>
                   <TableCell>
                     <Switch
@@ -146,7 +190,7 @@ export function PromotionsTable({
               ))}
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="py-6 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={9} className="py-6 text-center text-sm text-muted-foreground">
                   Todavía no hay promociones cargadas.
                 </TableCell>
               </TableRow>
@@ -159,6 +203,7 @@ export function PromotionsTable({
         <PromotionFormDialog
           promotion={(editing === "new" ? null : editing) as EditablePromotion | null}
           products={products}
+          priceConditions={priceConditions}
           open
           onOpenChange={(o) => !o && setEditing(null)}
           onSaved={() => {

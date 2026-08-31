@@ -15,6 +15,7 @@ export const promotionSchema = z
       .regex(/^[A-Za-z0-9._-]+$/, "El código solo puede tener letras, números, puntos y guiones."),
     name: z.string().trim().min(2, "Ingresá un nombre válido."),
     type: promotionTypeSchema,
+    price_condition_id: z.string().uuid("Elegí la condición de precio base."),
     discount_percent: z.number().min(0.01).max(0.9).nullable(),
     group_size: z.number().int().min(2).max(20),
     priority: z.number().int().min(1).max(999),

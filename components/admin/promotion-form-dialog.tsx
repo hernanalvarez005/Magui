@@ -40,6 +40,7 @@ export interface EditablePromotion {
   code: string;
   name: string;
   type: PromotionType;
+  price_condition_id: string;
   discount_percent: string | null;
   group_size: number;
   priority: number;
@@ -48,6 +49,11 @@ export interface EditablePromotion {
   valid_until: string | null;
   notes: string | null;
   productIds: string[];
+}
+
+export interface PriceConditionOption {
+  id: string;
+  name: string;
 }
 
 const TYPE_LABELS: Record<PromotionType, string> = {
@@ -64,6 +70,7 @@ function toDateInput(iso: string | null) {
 export function PromotionFormDialog({
   promotion,
   products,
+  priceConditions,
   open,
   onOpenChange,
   onSaved,
@@ -71,6 +78,7 @@ export function PromotionFormDialog({
   /** null = alta de una promoción nueva */
   promotion: EditablePromotion | null;
   products: ProductCandidate[];
+  priceConditions: PriceConditionOption[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
@@ -79,6 +87,7 @@ export function PromotionFormDialog({
     code: promotion?.code ?? "",
     name: promotion?.name ?? "",
     type: (promotion?.type ?? "THREE_FOR_TWO") as PromotionType,
+    priceConditionId: promotion?.price_condition_id ?? priceConditions[0]?.id ?? "",
     discountPercent: promotion?.discount_percent ? String(Number(promotion.discount_percent) * 100) : "",
     groupSize: promotion?.group_size ?? 3,
     priority: promotion?.priority ?? 100,
@@ -106,6 +115,7 @@ export function PromotionFormDialog({
       code: form.code,
       name: form.name,
       type: form.type,
+      price_condition_id: form.priceConditionId,
       discount_percent: form.type === "THREE_FOR_TWO" ? null : Number(form.discountPercent) / 100,
       group_size: Number(form.groupSize),
       priority: Number(form.priority),
@@ -125,6 +135,7 @@ export function PromotionFormDialog({
     const payload = {
       code: parsed.data.code,
       name: parsed.data.name,
+      price_condition_id: parsed.data.price_condition_id,
       discount_percent: parsed.data.discount_percent === null ? null : String(parsed.data.discount_percent),
       group_size: parsed.data.group_size,
       priority: parsed.data.priority,
@@ -209,6 +220,29 @@ export function PromotionFormDialog({
                 </SelectContent>
               </Select>
             )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>Condición de precio base</Label>
+            <Select
+              value={form.priceConditionId}
+              onValueChange={(v) => setForm((f) => ({ ...f, priceConditionId: v }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Elegí sobre qué precio se calcula el descuento" />
+              </SelectTrigger>
+              <SelectContent>
+                {priceConditions.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              El descuento se aplica sobre este precio, nunca sobre el que resuelva el medio de
+              pago elegido en la venta — la promoción reemplaza esa regla por completo.
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

@@ -209,6 +209,9 @@ export type PromotionRow = {
   code: string;
   name: string;
   type: PromotionType;
+  // Sobre qué condición de precio (Lista, Transferencia, etc.) se calcula el
+  // descuento — nunca la condición que resuelva el medio de pago del carrito.
+  price_condition_id: string;
   discount_percent: string | null;
   group_size: number;
   priority: number;
@@ -505,7 +508,8 @@ export type Database = {
       };
       promotions: {
         Row: PromotionRow;
-        Insert: { code: string; name: string; type: PromotionType } & Partial<PromotionRow>;
+        Insert: { code: string; name: string; type: PromotionType; price_condition_id: string } &
+          Partial<PromotionRow>;
         Update: Partial<PromotionRow>;
         Relationships: [];
       };
