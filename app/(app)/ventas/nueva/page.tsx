@@ -18,6 +18,7 @@ export default async function NewSalePage() {
     { data: doctors },
     { data: products },
     { data: kitComponents },
+    { data: promotions },
   ] = await Promise.all([
     supabase
       .from("stock_locations")
@@ -34,6 +35,10 @@ export default async function NewSalePage() {
       .eq("active", true)
       .order("name"),
     supabase.from("kit_components").select("kit_product_id, component_product_id, quantity"),
+    // Solo para mostrar el texto ("Promoción aplicada: 20% OFF" / "3x2") en el
+    // carrito — la elegibilidad real (vigencia, exclusividad) la resuelve
+    // siempre el servidor en quote_sale/create_sale, nunca el frontend.
+    supabase.from("promotions").select("id, name, type, discount_percent, group_size").eq("active", true),
   ]);
 
   if (!locations || locations.length === 0) {
@@ -65,6 +70,7 @@ export default async function NewSalePage() {
       paymentMethods={paymentMethods ?? []}
       doctors={doctors ?? []}
       products={(products ?? []).map((p) => ({ ...p, kitContents: kitContents.get(p.id) ?? null }))}
+      promotions={promotions ?? []}
       isAdmin={profile.role === "admin"}
     />
   );

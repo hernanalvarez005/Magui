@@ -20,8 +20,8 @@ select set_config('request.jwt.claim.sub', 'd0000000-0000-0000-0000-000000000001
 -- Fixtures de promociones (admin). El insert de `promotions` va suelto (no
 -- dentro de un WITH anidado en el select del assert): Postgres no permite un
 -- WITH con INSERT/RETURNING que no esté al tope del statement.
-insert into public.promotions (code, name, type, priority, stackable)
-  values ('TEST-3X2', '3x2 test', 'THREE_FOR_TWO', 10, false);
+insert into public.promotions (code, name, type, price_condition_id, priority, stackable)
+  values ('TEST-3X2', '3x2 test', 'THREE_FOR_TWO', (select id from price_conditions where rule_type = 'BASE'), 10, false);
 
 select is(
   (select (set_promotion_products(
@@ -32,8 +32,8 @@ select is(
   'Alta 3x2: 2 productos elegibles cargados en una sola transacción'
 );
 
-insert into public.promotions (code, name, type, discount_percent, priority, stackable)
-  values ('TEST-DUO', 'Duo test', 'DUO_PERCENT', 0.15, 20, true);
+insert into public.promotions (code, name, type, price_condition_id, discount_percent, priority, stackable)
+  values ('TEST-DUO', 'Duo test', 'DUO_PERCENT', (select id from price_conditions where rule_type = 'BASE'), 0.15, 20, true);
 
 select lives_ok(
   $$select set_promotion_products(
@@ -43,8 +43,8 @@ select lives_ok(
   'Alta duo: exactamente 2 productos no revienta el constraint deferred'
 );
 
-insert into public.promotions (code, name, type, discount_percent, priority, stackable)
-  values ('TEST-DUO-BAD', 'Duo incompleto', 'DUO_PERCENT', 0.15, 21, true);
+insert into public.promotions (code, name, type, price_condition_id, discount_percent, priority, stackable)
+  values ('TEST-DUO-BAD', 'Duo incompleto', 'DUO_PERCENT', (select id from price_conditions where rule_type = 'BASE'), 0.15, 21, true);
 
 select throws_ok(
   $$select set_promotion_products(
@@ -66,7 +66,8 @@ set role authenticated;
 select set_config('request.jwt.claim.sub', 'd0000000-0000-0000-0000-000000000002', false);
 
 select throws_ok(
-  $$insert into public.promotions (code, name, type, priority) values ('TEST-SELLER', 'x', 'KIT_PERCENT', 1)$$,
+  $$insert into public.promotions (code, name, type, price_condition_id, discount_percent, priority)
+    values ('TEST-SELLER', 'x', 'KIT_PERCENT', (select id from price_conditions where rule_type = 'BASE'), 0.1, 1)$$,
   'Vendedora no puede crear promociones (RLS)'
 );
 

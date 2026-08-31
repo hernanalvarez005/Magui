@@ -80,6 +80,20 @@ interface ProductOption {
   image_url: string | null;
   kitContents: string[] | null;
 }
+interface PromotionOption {
+  id: string;
+  name: string;
+  type: "THREE_FOR_TWO" | "DUO_PERCENT" | "KIT_PERCENT";
+  discount_percent: string | null;
+  group_size: number;
+}
+
+/** "Promoción aplicada: 20% OFF" / "Promoción aplicada: 3x2" — sección 14 del pedido. */
+function promoLabel(p: PromotionOption): string {
+  if (p.type === "THREE_FOR_TWO") return `Promoción aplicada: 3x${p.group_size - 1}`;
+  const pct = p.discount_percent ? Math.round(Number(p.discount_percent) * 100) : 0;
+  return `Promoción aplicada: ${pct}% OFF`;
+}
 
 const PAYMENT_ICONS: Record<string, React.ElementType> = {
   CASH: Banknote,
@@ -103,6 +117,7 @@ export function NewSaleClient({
   paymentMethods,
   doctors,
   products,
+  promotions,
   isAdmin,
 }: {
   seller: { id: string; fullName: string };
@@ -111,6 +126,7 @@ export function NewSaleClient({
   paymentMethods: PaymentMethodOption[];
   doctors: DoctorOption[];
   products: ProductOption[];
+  promotions: PromotionOption[];
   isAdmin: boolean;
 }) {
   const supabase = useMemo(() => createClient(), []);
@@ -657,6 +673,7 @@ export function NewSaleClient({
             <CartSummary
               cartItems={cartItems}
               products={products}
+              promotions={promotions}
               quote={quote}
               quoting={quoting}
               onRemove={(id) => setQuantity(id, 0)}
@@ -738,6 +755,7 @@ export function NewSaleClient({
 function CartSummary({
   cartItems,
   products,
+  promotions,
   quote,
   quoting,
   onRemove,
@@ -748,6 +766,7 @@ function CartSummary({
 }: {
   cartItems: { product_id: string; quantity: number; manual_price?: number }[];
   products: ProductOption[];
+  promotions: PromotionOption[];
   quote: PricingQuoteResult | null;
   quoting: boolean;
   onRemove: (productId: string) => void;
@@ -756,6 +775,7 @@ function CartSummary({
   manualPrices: Record<string, string>;
   onManualPriceChange: (productId: string, value: string) => void;
 }) {
+  const promoById = new Map(promotions.map((p) => [p.id, p]));
   if (cartItems.length === 0) {
     return <p className="py-8 text-center text-sm text-muted-foreground">Todavía no agregaste productos.</p>;
   }
@@ -772,7 +792,8 @@ function CartSummary({
           // así que ahí "lines" siempre tiene una sola.
           const lines = quote?.ok ? quote.lines.filter((l) => l.product_id === item.product_id) : [];
           const lineTotal = lines.length > 0 ? lines.reduce((sum, l) => sum + l.line_total, 0) : null;
-          const hasPromo = lines.some((l) => l.applied_promotion_id);
+          const appliedPromotionId = lines.find((l) => l.applied_promotion_id)?.applied_promotion_id;
+          const promo = appliedPromotionId ? promoById.get(appliedPromotionId) : undefined;
           const hasManualPrice = lines.some((l) => l.manual_price);
           const avgUnitPrice = lines.length > 0 ? lineTotal! / item.quantity : null;
           return (
@@ -781,11 +802,6 @@ function CartSummary({
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <p className="truncate text-sm font-medium">{product?.name ?? item.product_id}</p>
-                    {hasPromo ? (
-                      <Badge variant="secondary" className="shrink-0 font-normal">
-                        Promo
-                      </Badge>
-                    ) : null}
                     {hasManualPrice ? (
                       <Badge variant="outline" className="shrink-0 font-normal">
                         Precio manual
@@ -795,6 +811,17 @@ function CartSummary({
                   <p className="text-xs text-muted-foreground">
                     {item.quantity} × {avgUnitPrice !== null ? formatCurrency(avgUnitPrice) : "…"}
                   </p>
+                  {/* Sección 14 del pedido: el texto identifica la promoción
+                      puntual (nunca un badge genérico "Promo") y deja
+                      explícito que no se combina con el medio de pago. */}
+                  {promo ? (
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <Badge variant="success" className="shrink-0 font-normal">
+                        {promoLabel(promo)}
+                      </Badge>
+                      <span className="text-[11px] text-muted-foreground">No acumulable con otros descuentos</span>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold">
