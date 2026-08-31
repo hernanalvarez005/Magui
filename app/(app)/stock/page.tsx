@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { AlertTriangle, Boxes, Download, PackageX } from "lucide-react";
+import { AlertTriangle, Boxes, Download, Layers, PackageX } from "lucide-react";
 
 import { getCurrentProfile } from "@/lib/auth/get-profile";
 import { createClient } from "@/lib/supabase/server";
@@ -46,35 +46,48 @@ export default async function StockPage(props: PageProps<"/stock">) {
   if (status) stockQuery = stockQuery.eq("status", status);
   if (q) stockQuery = stockQuery.ilike("name", `%${q}%`);
 
-  // Las 5 consultas de acá son independientes entre sí (accessibleLocationIds
+  // Las 6 consultas de acá son independientes entre sí (accessibleLocationIds
   // sale de profile.locationIds, no de ninguna de ellas) — todas en una sola
-  // ronda en vez de dos etapas secuenciales.
-  const [{ data: locations }, { data: categories }, { data: stockRows }, { data: kitRows }, { data: products }] =
-    await Promise.all([
-      supabase
-        .from("stock_locations")
-        .select("id, code, name")
-        .in("id", accessibleLocationIds)
-        .eq("active", true)
-        .order("name"),
-      supabase.from("products").select("category").eq("active", true).not("category", "is", null),
-      stockQuery.order("name"),
-      supabase
-        .from("kit_availability")
-        .select("kit_product_id, kit_sku, kit_name, location_id, location_code, buildable_qty")
-        .in("location_id", accessibleLocationIds),
-      supabase
-        .from("products")
-        .select("id, sku, name, track_stock")
-        .eq("active", true)
-        .eq("track_stock", true)
-        .order("name"),
-    ]);
+  // ronda en vez de etapas secuenciales.
+  const [
+    { data: locations },
+    { data: categories },
+    { data: stockRows },
+    { data: kitRows },
+    { data: products },
+    { data: totalRows },
+  ] = await Promise.all([
+    supabase
+      .from("stock_locations")
+      .select("id, code, name")
+      .in("id", accessibleLocationIds)
+      .eq("active", true)
+      .order("name"),
+    supabase.from("products").select("category").eq("active", true).not("category", "is", null),
+    stockQuery.order("name"),
+    supabase
+      .from("kit_availability")
+      .select("kit_product_id, kit_sku, kit_name, location_id, location_code, buildable_qty")
+      .in("location_id", accessibleLocationIds),
+    supabase
+      .from("products")
+      .select("id, sku, name, track_stock")
+      .eq("active", true)
+      .eq("track_stock", true)
+      .order("name"),
+    // Stock total general: SIEMPRE sin los filtros de categoría/estado de la
+    // tabla (si no, "Stock total" cambiaría según el filtro aplicado, dejando
+    // de ser un total real) y SIN sumar disponibilidad de kits — la vista ya
+    // excluye kits (track_stock = true únicamente), así que sumar "quantity"
+    // acá nunca duplica físicamente inventario armado en kits.
+    supabase.from("product_stock_status").select("quantity").in("location_id", accessibleLocationIds),
+  ]);
 
   const distinctCategories = Array.from(new Set((categories ?? []).map((c) => c.category!))).sort();
 
   const withoutStock = (stockRows ?? []).filter((r) => r.status === "sin_stock").length;
   const lowStock = (stockRows ?? []).filter((r) => r.status === "bajo").length;
+  const totalStock = (totalRows ?? []).reduce((acc, r) => acc + Number(r.quantity), 0);
 
   const canManageStock = profile.role === "admin";
   const canAdjust = profile.role === "admin" || profile.canAdjustStock;
@@ -114,7 +127,18 @@ export default async function StockPage(props: PageProps<"/stock">) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Card>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex size-9 items-center justify-center rounded-full bg-primary/10">
+              <Layers className="size-4 text-primary" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Stock total</p>
+              <p className="text-lg font-semibold">{totalStock} unidades</p>
+            </div>
+          </CardContent>
+        </Card>
         <Card>
           <CardContent className="flex items-center gap-3 p-4">
             <div className="flex size-9 items-center justify-center rounded-full bg-destructive/10">
