@@ -12,7 +12,7 @@ export default async function AdminPricesPage() {
 
   const [{ data: products }, { data: conditions }, { data: prices }] = await Promise.all([
     supabase.from("products").select("id, sku, name, active").order("name"),
-    supabase.from("price_conditions").select("id, code, name, priority").eq("active", true),
+    supabase.from("price_conditions").select("id, code, name, priority, discount_percent").eq("active", true),
     supabase
       .from("product_prices")
       .select("id, product_id, price_condition_id, amount")
@@ -27,7 +27,9 @@ export default async function AdminPricesPage() {
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">
         Editar un precio nunca pisa el histórico: se cierra la vigencia anterior y se crea una versión
-        nueva. Las ventas ya confirmadas mantienen el precio con el que se vendieron.
+        nueva. Las ventas ya confirmadas mantienen el precio con el que se vendieron. El % de Efectivo
+        y Transferencia solo sugiere un precio al cambiar la Lista o el propio %: el valor final que se
+        guarda y se usa al vender es siempre el que quede escrito en la celda, redondeos incluidos.
       </p>
       <PriceMatrix
         products={products ?? []}
