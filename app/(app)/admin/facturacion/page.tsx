@@ -1,0 +1,161 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+
+import { createClient } from "@/lib/supabase/server";
+import { EmptyState } from "@/components/shared/empty-state";
+import { BillingTable } from "@/components/admin/billing-table";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+
+export const metadata: Metadata = { title: "Facturación pendiente" };
+
+const PAGE_SIZE = 30;
+
+const TABS = [
+  { value: "pending", label: "Pendientes" },
+  { value: "invoiced", label: "Facturadas" },
+  { value: "all", label: "Todas" },
+] as const;
+
+type Tab = (typeof TABS)[number]["value"];
+
+export default async function BillingPage(props: PageProps<"/admin/facturacion">) {
+  const searchParams = await props.searchParams;
+  const rawTab = typeof searchParams.tab === "string" ? searchParams.tab : "pending";
+  const tab: Tab = rawTab === "invoiced" || rawTab === "all" ? rawTab : "pending";
+  const page = Math.max(1, Number(searchParams.page ?? 1) || 1);
+
+  const supabase = await createClient();
+
+  // Solo las columnas que realmente se muestran (sección 31 del pedido) —
+  // nunca select("*"). status = confirmed SIEMPRE: una venta anulada nunca
+  // aparece acá, en ninguna de las 3 pestañas (sección 21/22) — este panel
+  // es exclusivamente sobre operaciones vigentes, la vista de anuladas ya
+  // vive en /ventas con su propio filtro.
+  let query = supabase
+    .from("sales")
+    .select(
+      "id, sale_number, sold_at, customer_id, total, payment_account_id, payment_method_id, billing_status, invoiced_at, invoiced_by",
+      { count: "exact" }
+    )
+    .eq("status", "confirmed");
+
+  if (tab === "pending") {
+    // Vista por defecto: la más antigua primero, para facturar en orden y
+    // no saltear operaciones (sección 12 del pedido).
+    query = query.eq("billing_status", "PENDING").order("sold_at", { ascending: true });
+  } else if (tab === "invoiced") {
+    query = query.eq("billing_status", "INVOICED").order("sold_at", { ascending: false });
+  } else {
+    query = query.order("sold_at", { ascending: false });
+  }
+
+  query = query.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+
+  const { data: sales, count } = await query;
+
+  const customerIds = Array.from(new Set((sales ?? []).map((s) => s.customer_id).filter((id): id is string => !!id)));
+  const accountIds = Array.from(
+    new Set((sales ?? []).map((s) => s.payment_account_id).filter((id): id is string => !!id))
+  );
+  const paymentIds = Array.from(new Set((sales ?? []).map((s) => s.payment_method_id)));
+  const invoicedByIds = Array.from(
+    new Set((sales ?? []).map((s) => s.invoiced_by).filter((id): id is string => !!id))
+  );
+
+  const [{ data: customers }, { data: accounts }, { data: paymentMethods }, { data: invoicedByProfiles }] =
+    await Promise.all([
+      customerIds.length
+        ? supabase.from("customers").select("id, full_name, dni").in("id", customerIds)
+        : Promise.resolve({ data: [] as { id: string; full_name: string; dni: string | null }[] }),
+      accountIds.length
+        ? supabase.from("payment_accounts").select("id, name").in("id", accountIds)
+        : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      paymentIds.length
+        ? supabase.from("payment_methods").select("id, name").in("id", paymentIds)
+        : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      invoicedByIds.length
+        ? supabase.from("profiles").select("id, full_name").in("id", invoicedByIds)
+        : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),
+    ]);
+
+  const customerMap = new Map((customers ?? []).map((c) => [c.id, c]));
+  const accountMap = new Map((accounts ?? []).map((a) => [a.id, a.name]));
+  const paymentMap = new Map((paymentMethods ?? []).map((p) => [p.id, p.name]));
+  const invoicedByMap = new Map((invoicedByProfiles ?? []).map((p) => [p.id, p.full_name]));
+
+  const rows = (sales ?? []).map((s) => ({
+    ...s,
+    customer: s.customer_id ? customerMap.get(s.customer_id) : undefined,
+    accountName: s.payment_account_id ? accountMap.get(s.payment_account_id) : undefined,
+    paymentName: paymentMap.get(s.payment_method_id),
+    invoicedByName: s.invoiced_by ? invoicedByMap.get(s.invoiced_by) : undefined,
+  }));
+
+  const totalPages = count ? Math.ceil(count / PAGE_SIZE) : 1;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Workflow administrativo sobre ventas ya confirmadas y cobradas — controla si ya se emitió la factura
+        correspondiente. Nunca modifica el estado comercial de la venta ni crea ventas nuevas.
+      </p>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex gap-1 rounded-lg bg-muted p-1">
+          {TABS.map((t) => (
+            <Link
+              key={t.value}
+              href={`/admin/facturacion?tab=${t.value}`}
+              className={cn(
+                "rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors",
+                tab === t.value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {t.label}
+              {t.value === "pending" ? <Badge variant="warning" className="ml-1.5">{tab === "pending" ? count ?? 0 : ""}</Badge> : null}
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <EmptyState
+          title={
+            tab === "pending"
+              ? "No hay operaciones pendientes de facturar."
+              : tab === "invoiced"
+                ? "Todavía no se marcó ninguna operación como facturada."
+                : "No hay operaciones para mostrar."
+          }
+        />
+      ) : (
+        <>
+          <BillingTable rows={rows} showInvoicedColumns={tab !== "pending"} />
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>
+              Página {page} de {totalPages} · {count} operaciones
+            </span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} asChild={page > 1}>
+                {page > 1 ? (
+                  <Link href={`/admin/facturacion?tab=${tab}&page=${page - 1}`}>Anterior</Link>
+                ) : (
+                  <span>Anterior</span>
+                )}
+              </Button>
+              <Button variant="outline" size="sm" disabled={page >= totalPages} asChild={page < totalPages}>
+                {page < totalPages ? (
+                  <Link href={`/admin/facturacion?tab=${tab}&page=${page + 1}`}>Siguiente</Link>
+                ) : (
+                  <span>Siguiente</span>
+                )}
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
