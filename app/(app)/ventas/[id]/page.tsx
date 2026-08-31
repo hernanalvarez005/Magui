@@ -68,7 +68,10 @@ export default async function SaleDetailPage(props: PageProps<"/ventas/[id]">) {
       condition={condition}
       cancelledByName={cancelledBy?.full_name}
       movements={movements ?? []}
-      canCancel={profile.role === "admin"}
+      // Admin y vendedora pueden anular (sección 16 del pedido) — el backend
+      // (cancel_sale) es la fuente final de verdad: valida usuario activo y
+      // acceso a la sede de la venta, esto solo decide si se muestra el botón.
+      canCancel={profile.role === "admin" || profile.role === "seller"}
     />
   );
 }
