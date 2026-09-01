@@ -37,16 +37,17 @@ export const promotionSchema = z
       if (data.discount_percent === null) {
         ctx.addIssue({ code: "custom", message: "Ingresá el porcentaje de descuento.", path: ["discount_percent"] });
       }
-      const expected = data.type === "DUO_PERCENT" ? 2 : 1;
-      if (data.product_ids.length !== expected) {
-        ctx.addIssue({
-          code: "custom",
-          message:
-            data.type === "DUO_PERCENT"
-              ? "Elegí exactamente 2 productos."
-              : "Elegí exactamente 1 kit.",
-          path: ["product_ids"],
-        });
+      if (data.type === "DUO_PERCENT") {
+        // Duo sigue siendo una pareja exacta — mecanismo distinto (least(qty_a, qty_b)),
+        // fuera del alcance del ajuste de selección múltiple.
+        if (data.product_ids.length !== 2) {
+          ctx.addIssue({ code: "custom", message: "Elegí exactamente 2 productos.", path: ["product_ids"] });
+        }
+      } else {
+        // KIT_PERCENT: uno o varios productos/kits — cada uno recibe el mismo % de forma independiente.
+        if (data.product_ids.length < 1) {
+          ctx.addIssue({ code: "custom", message: "Elegí al menos un producto o kit.", path: ["product_ids"] });
+        }
       }
     }
     if (data.valid_until && data.valid_until <= data.valid_from) {

@@ -59,8 +59,18 @@ export interface PriceConditionOption {
 const TYPE_LABELS: Record<PromotionType, string> = {
   THREE_FOR_TWO: "3x2 (la más barata gratis)",
   DUO_PERCENT: "Duo — % en un par de productos",
-  KIT_PERCENT: "% de descuento en un kit",
+  KIT_PERCENT: "% de descuento en uno o varios productos/kits",
 };
+
+const GROUP_LABELS: Record<string, string> = {
+  product: "Productos",
+  kit: "Kits",
+  accessory: "Accesorios",
+};
+// Orden fijo de las secciones agrupadas del selector (sección "Productos" /
+// "Kits" pedida explícitamente) — no depende del orden en que llegan los
+// candidatos.
+const GROUP_ORDER = ["product", "kit", "accessory"];
 
 function toDateInput(iso: string | null) {
   if (!iso) return "";
@@ -99,13 +109,17 @@ export function PromotionFormDialog({
   const [productIds, setProductIds] = useState<string[]>(promotion?.productIds ?? []);
   const [saving, setSaving] = useState(false);
 
-  const maxProducts = form.type === "DUO_PERCENT" ? 2 : form.type === "KIT_PERCENT" ? 1 : Infinity;
-  const candidates = form.type === "KIT_PERCENT" ? products.filter((p) => p.product_type === "kit") : products;
+  // Duo sigue siendo exactamente 2 (mecanismo de pareja, sin cambios). 3x2 y
+  // kit% ahora comparten el mismo criterio: uno o varios productos/kits,
+  // cada uno recibe el mismo tratamiento de forma independiente — ver
+  // 20260201000027_promotion_multiproduct.sql.
+  const maxProducts = form.type === "DUO_PERCENT" ? 2 : Infinity;
+  const candidates = products;
 
   function toggleProduct(id: string) {
     setProductIds((prev) => {
       if (prev.includes(id)) return prev.filter((p) => p !== id);
-      if (form.type !== "THREE_FOR_TWO") return [...prev.slice(0, maxProducts - 1), id];
+      if (form.type === "DUO_PERCENT") return [...prev.slice(0, maxProducts - 1), id];
       return [...prev, id];
     });
   }
@@ -322,23 +336,39 @@ export function PromotionFormDialog({
           </label>
 
           <div className="flex flex-col gap-2">
-            <Label>
-              Productos {form.type === "DUO_PERCENT" ? "(exactamente 2)" : form.type === "KIT_PERCENT" ? "(1 kit)" : "elegibles"}
-            </Label>
-            <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded-md border border-border p-2">
-              {candidates.map((p) => (
-                <label key={p.id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={productIds.includes(p.id)}
-                    disabled={!productIds.includes(p.id) && productIds.length >= maxProducts}
-                    onChange={() => toggleProduct(p.id)}
-                  />
-                  {p.name} ({p.sku})
-                </label>
-              ))}
+            <div className="flex items-center justify-between">
+              <Label>
+                Productos {form.type === "DUO_PERCENT" ? "(exactamente 2)" : "(elegí uno o varios)"}
+              </Label>
+              {productIds.length > 0 ? (
+                <span className="text-xs text-muted-foreground">{productIds.length} seleccionado{productIds.length === 1 ? "" : "s"}</span>
+              ) : null}
+            </div>
+            <div className="flex max-h-56 flex-col gap-3 overflow-y-auto rounded-md border border-border p-2">
+              {GROUP_ORDER.map((groupType) => {
+                const groupCandidates = candidates.filter((p) => p.product_type === groupType);
+                if (groupCandidates.length === 0) return null;
+                return (
+                  <div key={groupType} className="flex flex-col gap-1">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {GROUP_LABELS[groupType] ?? groupType}
+                    </p>
+                    {groupCandidates.map((p) => (
+                      <label key={p.id} className="flex items-center gap-2 pl-1 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={productIds.includes(p.id)}
+                          disabled={!productIds.includes(p.id) && productIds.length >= maxProducts}
+                          onChange={() => toggleProduct(p.id)}
+                        />
+                        {p.name} ({p.sku})
+                      </label>
+                    ))}
+                  </div>
+                );
+              })}
               {candidates.length === 0 ? (
-                <p className="py-2 text-center text-xs text-muted-foreground">No hay kits activos.</p>
+                <p className="py-2 text-center text-xs text-muted-foreground">No hay productos activos.</p>
               ) : null}
             </div>
           </div>
