@@ -6,6 +6,7 @@ import {
   Package,
   Settings,
   ShoppingBag,
+  Tag,
   Users,
 } from "lucide-react";
 
@@ -29,5 +30,10 @@ export const navItems: NavItem[] = [
   { href: "/stock", label: "Stock", icon: Package, mobile: true },
   { href: "/stock/movimientos", label: "Movimientos", icon: History },
   { href: "/clientes", label: "Clientes", icon: Users, mobile: true },
+  // Solo consulta (productos/kits, precios vigentes, promociones vigentes) —
+  // visible para los 3 roles. No es "mobile: true": la barra inferior mobile
+  // ya tiene 5 ítems (el máximo recomendado); en mobile se llega igual desde
+  // el menú del header (ver app-shell.tsx), que está siempre visible.
+  { href: "/precios", label: "Precios", icon: Tag },
   { href: "/admin/precios", label: "Administración", icon: Settings, roles: ["admin"] },
 ];

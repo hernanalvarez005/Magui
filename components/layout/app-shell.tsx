@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Settings, User as UserIcon } from "lucide-react";
+import { LogOut, Settings, Tag, User as UserIcon } from "lucide-react";
 
 import { Logo } from "@/components/layout/logo";
 import { navItems } from "@/components/layout/nav-items";
@@ -110,6 +110,14 @@ export function AppShell({
                 </p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              {/* Visible para los 3 roles — en mobile "Precios" no está en la
+                  barra inferior (ya tiene 5 ítems), así que este menú (siempre
+                  visible arriba a la derecha) es el acceso rápido en celular. */}
+              <DropdownMenuItem asChild>
+                <Link href="/precios">
+                  <Tag className="mr-2 size-4" /> Precios
+                </Link>
+              </DropdownMenuItem>
               {role === "admin" ? (
                 <DropdownMenuItem asChild>
                   <Link href="/admin/precios">
