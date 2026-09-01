@@ -6,6 +6,7 @@ import { Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/shared/empty-state";
+import { sortPromoFirst } from "@/lib/precios-sort";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import type { PromotionType } from "@/types/database";
 
@@ -176,8 +177,50 @@ export function PreciosView({
     return products.filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q));
   }, [products, search]);
 
+  // EN PROMO primero, el resto después — dentro de cada grupo se conserva
+  // el display_order que ya trae `products` (nunca se lo toca). La búsqueda
+  // reordena sobre el mismo criterio: si "Kit" matchea A (promo), B (normal)
+  // y C (promo), el resultado es A, C, B (sección 5/7 del pedido).
+  const promoProductIds = useMemo(() => new Set(promotionByProductId.keys()), [promotionByProductId]);
+  const sortedProducts = useMemo(
+    () => sortPromoFirst(filteredProducts, promoProductIds),
+    [filteredProducts, promoProductIds]
+  );
+
   return (
     <div className="flex flex-col gap-6">
+      {/* Promociones vigentes va primero: es lo que el vendedor necesita
+          identificar de un vistazo antes de buscar un producto puntual
+          (sección 2 del pedido). */}
+      <div className="flex flex-col gap-3">
+        <h2 className="text-base font-semibold">Promociones vigentes</h2>
+        {promotions.length === 0 ? (
+          <EmptyState title="No hay promociones vigentes en este momento." />
+        ) : (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {promotions.map((promo) => {
+              const participants = participantsByPromotion.get(promo.id) ?? [];
+              const benefit = promo.type === "THREE_FOR_TWO" ? "3x2" : `${pct(promo.discount_percent)} OFF`;
+              return (
+                <div key={promo.id} className="rounded-xl border border-primary/30 bg-primary/5 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-medium">{promo.name}</p>
+                    <Badge>{benefit}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {PROMO_TYPE_LABEL[promo.type]} · Base: {conditionNameById.get(promo.price_condition_id) ?? "—"}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Vigencia: {formatDate(promo.valid_from)} — {promo.valid_until ? formatDate(promo.valid_until) : "sin fin"}
+                  </p>
+                  <p className="mt-2 text-sm">Incluye: {participants.map((p) => p.name).join(", ") || "—"}</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
@@ -189,10 +232,10 @@ export function PreciosView({
       </div>
 
       <div className="flex flex-col gap-3">
-        {filteredProducts.length === 0 ? (
+        {sortedProducts.length === 0 ? (
           <EmptyState title="No encontramos productos que coincidan con tu búsqueda." />
         ) : (
-          filteredProducts.map((p) => {
+          sortedProducts.map((p) => {
             const promotion = promotionByProductId.get(p.id) ?? null;
             const participants = promotion ? participantsByPromotion.get(promotion.id) ?? [] : [];
             const basePrice = promotion
@@ -242,35 +285,6 @@ export function PreciosView({
               </div>
             );
           })
-        )}
-      </div>
-
-      <div className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold">Promociones vigentes</h2>
-        {promotions.length === 0 ? (
-          <EmptyState title="No hay promociones vigentes en este momento." />
-        ) : (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {promotions.map((promo) => {
-              const participants = participantsByPromotion.get(promo.id) ?? [];
-              const benefit = promo.type === "THREE_FOR_TWO" ? "3x2" : `${pct(promo.discount_percent)} OFF`;
-              return (
-                <div key={promo.id} className="rounded-xl border border-border bg-card p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-medium">{promo.name}</p>
-                    <Badge>{benefit}</Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {PROMO_TYPE_LABEL[promo.type]} · Base: {conditionNameById.get(promo.price_condition_id) ?? "—"}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Vigencia: {formatDate(promo.valid_from)} — {promo.valid_until ? formatDate(promo.valid_until) : "sin fin"}
-                  </p>
-                  <p className="mt-2 text-sm">Incluye: {participants.map((p) => p.name).join(", ") || "—"}</p>
-                </div>
-              );
-            })}
-          </div>
         )}
       </div>
     </div>
