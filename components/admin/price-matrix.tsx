@@ -18,6 +18,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/client";
 import { suggestDiscountedPrice } from "@/lib/pricing/discount-suggestion";
+import { classifyDirtyPriceCells, isPriceCellDirty } from "@/lib/pricing/price-matrix-changes";
 import { cn } from "@/lib/utils";
 
 interface ProductRow {
@@ -157,9 +158,10 @@ export function PriceMatrix({
   function isDirty(productId: string, conditionId: string) {
     const key = cellKey(productId, conditionId);
     if (!edited.has(key)) return false;
-    const current = edited.get(key);
-    const originalValue = original.get(key);
-    return current !== (originalValue !== undefined ? String(originalValue) : "");
+    // Misma normalización que classifyDirtyPriceCells (bugfix: "no hay
+    // cambios para guardar" pasaba porque acá se comparaba distinto que en
+    // el guardado — ver lib/pricing/price-matrix-changes.ts).
+    return isPriceCellDirty(edited.get(key)!, original.get(key));
   }
 
   function isPercentDirty(conditionId: string) {
@@ -190,13 +192,14 @@ export function PriceMatrix({
   }
 
   async function handleSave() {
-    const dirtyPrices = Array.from(edited.entries()).filter(([key, value]) => {
-      const original_ = original.get(key);
-      return value !== (original_ !== undefined ? String(original_) : "") && value.trim() !== "";
-    });
+    // Única fuente de verdad para "qué cambió" — el mismo cálculo que
+    // alimenta dirtyCount/isDirty más abajo, así que ya no pueden divergir
+    // (esa era la causa raíz del "No hay cambios para guardar" a pesar de
+    // haber una edición real: acá se usaba un filtro, dirtyCount otro).
+    const { toSave, toClear, invalid } = classifyDirtyPriceCells(edited, original);
     const dirtyPercents = suggestableConditions.filter((c) => isPercentDirty(c.id));
 
-    if (dirtyPrices.length === 0 && dirtyPercents.length === 0) {
+    if (toSave.length === 0 && toClear.length === 0 && invalid.length === 0 && dirtyPercents.length === 0) {
       toast.info("No hay cambios para guardar.");
       return;
     }
@@ -205,6 +208,11 @@ export function PriceMatrix({
     const supabase = createClient();
     let successCount = 0;
     let errorMessage: string | null = null;
+    // Solo se limpian del estado local las celdas que efectivamente se
+    // guardaron — si algo falla (RPC, error de red, validación), esa
+    // edición queda escrita para poder reintentar en vez de perderse.
+    const succeededKeys = new Set<string>();
+    const succeededPercentIds = new Set<string>();
 
     // Los % se guardan primero (columna simple en price_conditions, sin
     // versionado — no son la fuente de verdad de ninguna venta, solo la
@@ -220,16 +228,14 @@ export function PriceMatrix({
         .update({ discount_percent: String(pct / 100) })
         .eq("id", cond.id);
       if (error) errorMessage = error.message;
-      else successCount++;
+      else {
+        successCount++;
+        succeededPercentIds.add(cond.id);
+      }
     }
 
-    for (const [key, value] of dirtyPrices) {
+    for (const { key, amount } of toSave) {
       const [productId, conditionId] = key.split(":");
-      const amount = Number(value);
-      if (Number.isNaN(amount) || amount <= 0) {
-        errorMessage = `El precio "${value}" no es válido.`;
-        continue;
-      }
       const { error } = await supabase.rpc("set_product_price", {
         p_product_id: productId,
         p_price_condition_id: conditionId,
@@ -239,23 +245,56 @@ export function PriceMatrix({
         errorMessage = error.message;
       } else {
         successCount++;
+        succeededKeys.add(key);
+      }
+    }
+
+    // Precio existente que se dejó vacío: se desactiva la vigencia (nunca
+    // se guarda $0) — ver 20260201000029_clear_product_price.sql.
+    for (const { key } of toClear) {
+      const [productId, conditionId] = key.split(":");
+      const { error } = await supabase.rpc("clear_product_price", {
+        p_product_id: productId,
+        p_price_condition_id: conditionId,
+      });
+      if (error) {
+        errorMessage = error.message;
+      } else {
+        successCount++;
+        succeededKeys.add(key);
       }
     }
 
     setSaving(false);
-    setEdited(new Map());
-    setPercentEdited(new Map());
+    setEdited((prev) => {
+      const next = new Map(prev);
+      for (const key of succeededKeys) next.delete(key);
+      return next;
+    });
+    setPercentEdited((prev) => {
+      const next = new Map(prev);
+      for (const id of succeededPercentIds) next.delete(id);
+      return next;
+    });
 
     if (successCount > 0) toast.success(`${successCount} cambio(s) guardados.`);
+    if (invalid.length > 0) {
+      toast.error(
+        invalid.length === 1
+          ? `El precio "${invalid[0].rawValue}" no es válido — tiene que ser un número mayor a 0.`
+          : `${invalid.length} precios no son válidos — tienen que ser un número mayor a 0.`
+      );
+    }
     if (errorMessage) toast.error(errorMessage);
     router.refresh();
   }
 
+  const { toSave: dirtyToSave, toClear: dirtyToClear, invalid: dirtyInvalid } = classifyDirtyPriceCells(
+    edited,
+    original
+  );
   const dirtyCount =
-    Array.from(edited.entries()).filter(([key, value]) => {
-      const original_ = original.get(key);
-      return value !== (original_ !== undefined ? String(original_) : "");
-    }).length + suggestableConditions.filter((c) => isPercentDirty(c.id)).length;
+    dirtyToSave.length + dirtyToClear.length + dirtyInvalid.length + suggestableConditions.filter((c) => isPercentDirty(c.id)).length;
 
   return (
     <div className="flex flex-col gap-4">

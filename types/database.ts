@@ -685,6 +685,14 @@ export type Database = {
         };
         Returns: ProductPriceRow;
       };
+      clear_product_price: {
+        Args: {
+          p_product_id: string;
+          p_price_condition_id: string;
+          p_valid_from?: string;
+        };
+        Returns: void;
+      };
       dashboard_report: {
         Args: {
           p_from: string;
