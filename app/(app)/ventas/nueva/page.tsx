@@ -79,11 +79,17 @@ export default async function NewSalePage() {
     kitContents.set(kc.kit_product_id, list);
   }
 
+  // Web es exclusivo de admin — un vendedor nunca la ve como opción (el
+  // backend la vuelve a rechazar igual si se manipula la request, ver
+  // 20260201000028_web_channel_admin_only.sql). El canal sigue existiendo
+  // en el modelo de datos, solo se oculta del selector para este rol.
+  const allowedChannels = (channels ?? []).filter((c) => profile.role === "admin" || c.code !== "WEB");
+
   return (
     <NewSaleClient
       seller={{ id: profile.id, fullName: profile.fullName }}
       locations={locations}
-      channels={channels ?? []}
+      channels={allowedChannels}
       paymentMethods={paymentMethods ?? []}
       paymentAccounts={paymentAccounts ?? []}
       doctors={doctors ?? []}

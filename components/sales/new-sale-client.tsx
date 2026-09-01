@@ -478,18 +478,26 @@ export function NewSaleClient({
             <Label className="text-xs text-muted-foreground">
               {isWeb ? "Sucursal de despacho" : "Sucursal"}
             </Label>
-            <Select value={locationId} onValueChange={setLocationId}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {locations.map((l) => (
-                  <SelectItem key={l.id} value={l.id}>
-                    {l.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {locations.length <= 1 ? (
+              // Una sola sede habilitada: se muestra fija, no se obliga a
+              // elegir algo cuando no hay ninguna otra opción válida.
+              <div className="flex h-9 items-center rounded-md border border-input bg-muted px-3 text-sm">
+                {locations[0]?.name ?? "—"}
+              </div>
+            ) : (
+              <Select value={locationId} onValueChange={setLocationId}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {locations.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </div>
 
