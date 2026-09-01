@@ -40,10 +40,16 @@ export default async function NewSalePage() {
     supabase.from("payment_methods").select("id, code, name").eq("active", true).order("sort_order"),
     supabase.from("payment_accounts").select("id, code, name").eq("active", true).order("sort_order"),
     supabase.from("doctors").select("id, code, full_name").eq("active", true).order("full_name"),
+    // display_order: orden visual pedido por el negocio (productos, después
+    // kits, después accesorios) — cambio EXCLUSIVAMENTE de esta pantalla, ver
+    // 20260201000026_product_display_order.sql. name como segundo criterio,
+    // para que un producto nuevo sin display_order asignado (default al
+    // final) quede alfabético contra el resto que tampoco lo tiene.
     supabase
       .from("products")
       .select("id, sku, name, product_type, category, track_stock, image_url")
       .eq("active", true)
+      .order("display_order")
       .order("name"),
     supabase.from("kit_components").select("kit_product_id, component_product_id, quantity"),
     // Solo para mostrar el texto ("Promoción aplicada: 20% OFF" / "3x2") en el
