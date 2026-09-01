@@ -58,12 +58,14 @@ export function ActivePromotionsStrip({
             <Link
               key={promo.id}
               href="/precios"
-              className="flex w-56 shrink-0 flex-col gap-1 rounded-xl border border-primary/30 bg-primary/5 p-3 transition-colors hover:bg-primary/10 md:w-64"
+              className="flex w-56 shrink-0 flex-col gap-1.5 rounded-xl border border-primary/30 bg-primary/5 p-3 transition-colors hover:bg-primary/10 md:w-64"
             >
-              <div className="flex items-center gap-2">
-                <Badge>{benefit}</Badge>
-                <span className="truncate text-sm font-medium">{promo.name}</span>
-              </div>
+              {/* Badge (solo el beneficio) y nombre en renglones separados —
+                  nunca en la misma línea, para que un nombre largo nunca se
+                  vea "pegado" al badge ni corra el riesgo de un truncado a
+                  mitad de palabra que parezca repetir el beneficio. */}
+              <Badge className="w-fit">{benefit}</Badge>
+              <p className="line-clamp-2 text-sm font-medium leading-snug">{promo.name}</p>
               <p className="line-clamp-2 text-xs text-muted-foreground">{names}</p>
             </Link>
           );

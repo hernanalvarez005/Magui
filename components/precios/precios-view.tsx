@@ -202,18 +202,24 @@ export function PreciosView({
               const participants = participantsByPromotion.get(promo.id) ?? [];
               const benefit = promo.type === "THREE_FOR_TWO" ? "3x2" : `${pct(promo.discount_percent)} OFF`;
               return (
-                <div key={promo.id} className="rounded-xl border border-primary/30 bg-primary/5 p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-medium">{promo.name}</p>
-                    <Badge>{benefit}</Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {PROMO_TYPE_LABEL[promo.type]} · Base: {conditionNameById.get(promo.price_condition_id) ?? "—"}
+                // Misma jerarquía que la card de Home (badge -> nombre ->
+                // participantes), cada uno en su propio renglón para que un
+                // nombre largo nunca quede "pegado" al badge ni se trunque a
+                // mitad de palabra pareciendo repetir el beneficio. h-full +
+                // el grid (stretch por defecto) mantiene todas las cards de
+                // la fila alineadas a la misma altura.
+                <div key={promo.id} className="flex h-full flex-col gap-1.5 rounded-xl border border-primary/30 bg-primary/5 p-4">
+                  <Badge className="w-fit">{benefit}</Badge>
+                  <p className="line-clamp-2 text-sm font-semibold leading-snug">{promo.name}</p>
+                  <p className="line-clamp-2 text-xs text-muted-foreground">
+                    Incluye: {participants.map((p) => p.name).join(", ") || "—"}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
+                    {PROMO_TYPE_LABEL[promo.type]} · Base: {conditionNameById.get(promo.price_condition_id) ?? "—"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
                     Vigencia: {formatDate(promo.valid_from)} — {promo.valid_until ? formatDate(promo.valid_until) : "sin fin"}
                   </p>
-                  <p className="mt-2 text-sm">Incluye: {participants.map((p) => p.name).join(", ") || "—"}</p>
                 </div>
               );
             })}
