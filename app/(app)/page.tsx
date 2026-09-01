@@ -4,6 +4,8 @@ import { AlertTriangle, ArrowRight, Plus, ShoppingBag } from "lucide-react";
 
 import { getCurrentProfile } from "@/lib/auth/get-profile";
 import { createClient } from "@/lib/supabase/server";
+import { activePromotionsQuery, resolvePromotionParticipants } from "@/lib/promotions/active-promotions";
+import { ActivePromotionsStrip } from "@/components/home/active-promotions-strip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +23,7 @@ export default async function HomePage() {
   const supabase = await createClient();
   const today = todayInBuenosAires();
 
-  const [{ data: todaySales }, { data: recentSales }, { data: lowStock }] = await Promise.all([
+  const [{ data: todaySales }, { data: recentSales }, { data: lowStock }, { data: promotions }] = await Promise.all([
     supabase
       .from("sales")
       .select("id, total")
@@ -44,7 +46,15 @@ export default async function HomePage() {
       .in("location_id", profile.locationIds.length > 0 ? profile.locationIds : ["00000000-0000-0000-0000-000000000000"])
       .in("status", ["bajo", "sin_stock"])
       .limit(6),
+    // Misma fuente/regla de vigencia que /precios (activePromotionsQuery) —
+    // ajuste "promociones en Home", sección 4: ninguna copia de datos.
+    activePromotionsQuery(supabase),
   ]);
+
+  const participantsByPromotion = await resolvePromotionParticipants(
+    supabase,
+    (promotions ?? []).map((p) => p.id)
+  );
 
   const salesCount = todaySales?.length ?? 0;
   const revenueToday = (todaySales ?? []).reduce((acc, s) => acc + Number(s.total), 0);
@@ -61,6 +71,8 @@ export default async function HomePage() {
           <Plus /> Nueva venta
         </Link>
       </Button>
+
+      <ActivePromotionsStrip promotions={promotions ?? []} participantsByPromotion={participantsByPromotion} />
 
       <div className="grid grid-cols-2 gap-3">
         <Card>

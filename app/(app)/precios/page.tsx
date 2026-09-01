@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { createClient } from "@/lib/supabase/server";
+import { activePromotionsQuery } from "@/lib/promotions/active-promotions";
 import { PreciosView } from "@/components/precios/precios-view";
 
 export const metadata: Metadata = { title: "Precios" };
@@ -15,7 +16,6 @@ const DISPLAY_CODES = ["LIST", "CASH", "TRANSFER", "CARD_1", "INSTALLMENTS_3"];
 
 export default async function PreciosPage() {
   const supabase = await createClient();
-  const nowIso = new Date().toISOString();
 
   // Fuente única de verdad: las mismas tablas que usa Administración
   // (products, price_conditions, product_prices, promotions,
@@ -24,10 +24,9 @@ export default async function PreciosPage() {
   // activo (seller/viewer/admin) en las 5 — no hace falta RLS nueva
   // (sección 24), ver informe.
   //
-  // "Vigente" para promociones: EXACTAMENTE el mismo criterio que ya usa
-  // fn_apply_promotions al vender (active = true AND valid_from <= now AND
-  // (valid_until is null OR valid_until > now)) — no se inventa una
-  // segunda regla de vigencia acá (sección 16).
+  // "Vigente" para promociones: activePromotionsQuery() — misma función que
+  // usa la Home del vendedor, para que las dos pantallas nunca diverjan en
+  // qué cuenta como vigente (ajuste "promociones en Home").
   const [{ data: products }, { data: priceConditions }, { data: productPrices }, { data: promotions }] =
     await Promise.all([
       supabase
@@ -42,12 +41,7 @@ export default async function PreciosPage() {
       // CADA promoción (puede ser cualquiera, no solo una de las 5) para
       // calcular "Precio promo" (sección 9).
       supabase.from("product_prices").select("product_id, price_condition_id, amount").eq("active", true),
-      supabase
-        .from("promotions")
-        .select("id, code, name, type, price_condition_id, discount_percent, group_size, valid_from, valid_until")
-        .eq("active", true)
-        .lte("valid_from", nowIso)
-        .or(`valid_until.is.null,valid_until.gt.${nowIso}`),
+      activePromotionsQuery(supabase),
     ]);
 
   const promotionIds = (promotions ?? []).map((p) => p.id);
