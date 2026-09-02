@@ -331,6 +331,7 @@ export type ProductStockStatusRow = {
   quantity: string;
   min_stock: string;
   status: "ok" | "bajo" | "sin_stock";
+  product_active: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -691,6 +692,18 @@ export type Database = {
           p_price_condition_id: string;
           p_valid_from?: string;
         };
+        Returns: void;
+      };
+      deactivate_product: {
+        Args: { p_product_id: string };
+        Returns: void;
+      };
+      reactivate_product: {
+        Args: { p_product_id: string };
+        Returns: void;
+      };
+      delete_product: {
+        Args: { p_product_id: string };
         Returns: void;
       };
       dashboard_report: {

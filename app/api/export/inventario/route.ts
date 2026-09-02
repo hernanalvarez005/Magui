@@ -23,7 +23,10 @@ export async function GET(request: NextRequest) {
   const status = rawStatus === "ok" || rawStatus === "bajo" || rawStatus === "sin_stock" ? rawStatus : null;
 
   if (category) query = query.eq("category", category);
-  if (status) query = query.eq("status", status);
+  // Mismo criterio que /stock: filtrar por un estado puntual es "modo
+  // alerta" y excluye productos inactivos (sección 17 del pedido) — el
+  // listado general (sin status) sigue exportando todo, igual que la tabla.
+  if (status) query = query.eq("status", status).eq("product_active", true);
 
   const { data: rows, error } = await query;
   if (error) return new Response(error.message, { status: 400 });

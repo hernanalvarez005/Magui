@@ -19,13 +19,27 @@ export default async function AdminProductsPage() {
   // products de arriba ya trae id + name de TODOS los productos (no filtra
   // por active) — alcanza para armar el nombre de cada componente de kit,
   // no hace falta pedirle la misma tabla a la base una segunda vez.
-  const nameById = new Map((products ?? []).map((p) => [p.id, p.name]));
+  const productById = new Map((products ?? []).map((p) => [p.id, p]));
 
   const componentsByKit = new Map<string, string[]>();
+  // Inverso: para cada producto, en qué kits ACTIVOS participa como
+  // componente — alimenta la advertencia al desactivar ("Este producto
+  // forma parte de N kits activos"), sección 6 del pedido. Se arma acá
+  // porque ya se tienen products + kitComponents cargados; no hace falta
+  // una query nueva.
+  const activeKitsByComponent = new Map<string, string[]>();
   for (const kc of kitComponents ?? []) {
+    const kit = productById.get(kc.kit_product_id);
+    const componentName = productById.get(kc.component_product_id)?.name ?? kc.component_product_id;
     const list = componentsByKit.get(kc.kit_product_id) ?? [];
-    list.push(`${kc.quantity}× ${nameById.get(kc.component_product_id) ?? kc.component_product_id}`);
+    list.push(`${kc.quantity}× ${componentName}`);
     componentsByKit.set(kc.kit_product_id, list);
+
+    if (kit?.active) {
+      const kitList = activeKitsByComponent.get(kc.component_product_id) ?? [];
+      kitList.push(kit.name);
+      activeKitsByComponent.set(kc.component_product_id, kitList);
+    }
   }
 
   return (
@@ -38,6 +52,7 @@ export default async function AdminProductsPage() {
         products={(products ?? []).map((p) => ({
           ...p,
           components: componentsByKit.get(p.id) ?? [],
+          activeKits: activeKitsByComponent.get(p.id) ?? [],
         }))}
       />
     </div>

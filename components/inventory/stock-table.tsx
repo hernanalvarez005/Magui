@@ -1,3 +1,4 @@
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
   Table,
@@ -19,6 +20,7 @@ interface StockRow {
   quantity: string;
   min_stock: string;
   status: "ok" | "bajo" | "sin_stock";
+  product_active: boolean;
 }
 
 interface LocationOption {
@@ -32,6 +34,7 @@ interface PivotedProduct {
   sku: string;
   name: string;
   category: string | null;
+  active: boolean;
   byLocation: Record<string, { quantity: number; minStock: number; status: "ok" | "bajo" | "sin_stock" }>;
   total: number;
 }
@@ -42,7 +45,15 @@ function pivot(rows: StockRow[]): PivotedProduct[] {
   for (const row of rows) {
     let entry = byProduct.get(row.product_id);
     if (!entry) {
-      entry = { product_id: row.product_id, sku: row.sku, name: row.name, category: row.category, byLocation: {}, total: 0 };
+      entry = {
+        product_id: row.product_id,
+        sku: row.sku,
+        name: row.name,
+        category: row.category,
+        active: row.product_active,
+        byLocation: {},
+        total: 0,
+      };
       byProduct.set(row.product_id, entry);
     }
     const quantity = Number(row.quantity);
@@ -132,7 +143,10 @@ export function StockTable({ rows, locations }: { rows: StockRow[]; locations: L
             {products.map((p) => (
               <TableRow key={p.product_id}>
                 <TableCell>
-                  <p className="font-medium">{p.name}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="font-medium">{p.name}</p>
+                    {!p.active ? <Badge variant="secondary">Inactivo</Badge> : null}
+                  </div>
                   <p className="text-xs text-muted-foreground">{p.sku}</p>
                 </TableCell>
                 {locations.map((l) => (
@@ -156,7 +170,10 @@ export function StockTable({ rows, locations }: { rows: StockRow[]; locations: L
           <div key={p.product_id} className="rounded-xl border border-border bg-card p-3.5">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="font-medium">{p.name}</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="font-medium">{p.name}</p>
+                  {!p.active ? <Badge variant="secondary">Inactivo</Badge> : null}
+                </div>
                 <p className="text-xs text-muted-foreground">{p.sku}</p>
               </div>
               <span className="font-medium">Total: {p.total}</span>

@@ -45,6 +45,9 @@ export default async function HomePage() {
       // la sede "fantasma" del cross join, así que el stock aparece en 0).
       .in("location_id", profile.locationIds.length > 0 ? profile.locationIds : ["00000000-0000-0000-0000-000000000000"])
       .in("status", ["bajo", "sin_stock"])
+      // Un producto inactivo no es una alerta operativa real — ver
+      // 20260201000030_product_lifecycle.sql (columna product_active).
+      .eq("product_active", true)
       .limit(6),
     // Misma fuente/regla de vigencia que /precios (activePromotionsQuery) —
     // ajuste "promociones en Home", sección 4: ninguna copia de datos.

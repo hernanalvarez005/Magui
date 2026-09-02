@@ -39,11 +39,16 @@ export default async function StockPage(props: PageProps<"/stock">) {
 
   let stockQuery = supabase
     .from("product_stock_status")
-    .select("product_id, sku, name, category, location_id, location_code, quantity, min_stock, status")
+    .select("product_id, sku, name, category, location_id, location_code, quantity, min_stock, status, product_active")
     .in("location_id", accessibleLocationIds);
 
   if (category) stockQuery = stockQuery.eq("category", category);
-  if (status) stockQuery = stockQuery.eq("status", status);
+  // Filtrar explícitamente por un estado (Sin stock / Bajo mínimo) es
+  // "modo alerta" — un producto inactivo nunca debe aparecer ahí (sección
+  // 17 del pedido). Sin filtro de estado (listado general), Administración
+  // sigue pudiendo consultar el stock remanente de productos inactivos
+  // (sección 4) — StockTable los marca con un badge "Inactivo" aparte.
+  if (status) stockQuery = stockQuery.eq("status", status).eq("product_active", true);
   if (q) stockQuery = stockQuery.ilike("name", `%${q}%`);
 
   // Las 6 consultas de acá son independientes entre sí (accessibleLocationIds
@@ -85,8 +90,20 @@ export default async function StockPage(props: PageProps<"/stock">) {
 
   const distinctCategories = Array.from(new Set((categories ?? []).map((c) => c.category!))).sort();
 
-  const withoutStock = (stockRows ?? []).filter((r) => r.status === "sin_stock").length;
-  const lowStock = (stockRows ?? []).filter((r) => r.status === "bajo").length;
+  // KPI "Sin stock" / "Bajo mínimo": son alertas operativas, nunca cuentan
+  // un producto inactivo (sección 17/18 del pedido) — el filtro ya lo
+  // excluye cuando `status` está seteado, pero se repite acá para que el
+  // número sea correcto incluso en el listado sin filtrar.
+  const withoutStock = (stockRows ?? []).filter((r) => r.status === "sin_stock" && r.product_active).length;
+  const lowStock = (stockRows ?? []).filter((r) => r.status === "bajo" && r.product_active).length;
+  // "Stock total": representa inventario FÍSICO real del negocio (mismo
+  // criterio que ya documentaba este KPI antes de este ajuste — nunca
+  // sumaba disponibilidad de kits, siempre ignoraba los filtros de la
+  // tabla) — se decide a propósito seguir incluyendo acá unidades físicas
+  // de productos inactivos: son stock real que sigue en el depósito/sede
+  // aunque ya no sea vendible, y Administración necesita poder verlo
+  // reflejado en el total (sección 18 del pedido, documentado en vez de
+  // cambiarlo en silencio).
   const totalStock = (totalRows ?? []).reduce((acc, r) => acc + Number(r.quantity), 0);
 
   const canManageStock = profile.role === "admin";
