@@ -26,6 +26,7 @@ interface Props {
   customer: { full_name: string; dni: string | null; whatsapp: string | null } | null;
   doctor: { full_name: string; commission_percent: string } | null;
   paymentMethod: { name: string } | null;
+  paymentAccount: { name: string } | null;
   condition: { name: string } | null;
   cancelledByName?: string;
   movements: StockMovementRow[];
@@ -41,6 +42,7 @@ export function SaleDetailView({
   customer,
   doctor,
   paymentMethod,
+  paymentAccount,
   condition,
   cancelledByName,
   movements,
@@ -98,6 +100,11 @@ export function SaleDetailView({
           />
           <Field label="Doctora" value={doctor?.full_name ?? "Sin doctora"} />
           <Field label="Condición aplicada" value={condition?.name ?? "—"} />
+          {/* Cuenta donde ingresó el dinero — distinto del medio de pago (ya
+              se muestra arriba, junto al total). Una venta histórica sin
+              cuenta asociada (ej. efectivo, o previa a este ajuste) muestra
+              "No registrada", nunca se inventa retroactivamente. */}
+          <Field label="Cuenta" value={paymentAccount?.name ?? "No registrada"} />
         </CardContent>
       </Card>
 

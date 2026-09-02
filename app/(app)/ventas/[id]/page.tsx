@@ -23,6 +23,7 @@ export default async function SaleDetailPage(props: PageProps<"/ventas/[id]">) {
     { data: customer },
     { data: doctor },
     { data: paymentMethod },
+    { data: paymentAccount },
     { data: condition },
     { data: cancelledBy },
     { data: movements },
@@ -40,6 +41,9 @@ export default async function SaleDetailPage(props: PageProps<"/ventas/[id]">) {
       ? supabase.from("doctors").select("full_name, commission_percent").eq("id", sale.doctor_id).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase.from("payment_methods").select("name").eq("id", sale.payment_method_id).single(),
+    sale.payment_account_id
+      ? supabase.from("payment_accounts").select("name").eq("id", sale.payment_account_id).maybeSingle()
+      : Promise.resolve({ data: null }),
     sale.applied_price_condition_id
       ? supabase.from("price_conditions").select("name").eq("id", sale.applied_price_condition_id).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -65,6 +69,7 @@ export default async function SaleDetailPage(props: PageProps<"/ventas/[id]">) {
       customer={customer}
       doctor={doctor}
       paymentMethod={paymentMethod}
+      paymentAccount={paymentAccount}
       condition={condition}
       cancelledByName={cancelledBy?.full_name}
       movements={movements ?? []}

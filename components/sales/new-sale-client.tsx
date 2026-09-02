@@ -46,6 +46,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ProductCard, type ProductCardData } from "@/components/sales/product-card";
 import { CustomerPickerDialog, type CustomerOption } from "@/components/sales/customer-picker-dialog";
 import { createClient } from "@/lib/supabase/client";
+import { shouldShowTransferAlias } from "@/lib/sales/payment-account-alias";
 import { cn, formatCurrency } from "@/lib/utils";
 import { newSaleSchema } from "@/lib/validation/sale";
 import type { CreateSaleResult, PricingQuoteResult } from "@/types/database";
@@ -69,6 +70,7 @@ interface PaymentAccountOption {
   id: string;
   code: string;
   name: string;
+  alias: string | null;
 }
 
 // Formas de pago que la cuenta de ingreso vuelve obligatoria y que
@@ -243,6 +245,19 @@ export function NewSaleClient({
   // justo, nunca la fuente de verdad.
   const selectedPaymentMethod = paymentMethods.find((pm) => pm.id === paymentMethodId);
   const requiresPaymentAccount = !isFreeSale && ACCOUNT_REQUIRED_CODES.includes(selectedPaymentMethod?.code ?? "");
+
+  // Alias para transferencia (sección 2/3/4 del pedido): a propósito NO es
+  // lo mismo que requiresPaymentAccount (eso también incluye 1 pago/3
+  // cuotas) — el alias solo tiene sentido cuando el medio es Transferencia
+  // en sí, y únicamente si la cuenta elegida tiene alias cargado. Genérico
+  // por diseño: no hay ningún "if Mercado Pago" hardcodeado, cualquier
+  // cuenta con alias lo muestra igual.
+  const selectedPaymentAccount = paymentAccounts.find((pa) => pa.id === paymentAccountId);
+  const showAlias = shouldShowTransferAlias({
+    isFreeSale,
+    paymentMethodCode: selectedPaymentMethod?.code,
+    account: selectedPaymentAccount,
+  });
 
   function handlePaymentMethodChange(id: string) {
     setPaymentMethodId(id);
@@ -800,6 +815,33 @@ export function NewSaleClient({
                   <p className="text-xs text-muted-foreground">
                     Esta operación va a quedar pendiente de facturación — necesita cliente con DNI.
                   </p>
+
+                  {/* Solo Transferencia (no 1 pago/3 cuotas) y solo si la
+                      cuenta elegida tiene alias — se actualiza solo al
+                      cambiar de cuenta, nunca queda un alias viejo pegado. */}
+                  {showAlias ? (
+                    <div className="flex flex-col gap-1.5 rounded-lg border border-primary/30 bg-primary/5 p-3">
+                      <p className="text-xs font-medium text-muted-foreground">Alias para transferencia</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs text-muted-foreground">{selectedPaymentAccount!.name}</p>
+                          <p className="truncate font-mono text-sm font-semibold">{selectedPaymentAccount!.alias}</p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0"
+                          onClick={() => {
+                            navigator.clipboard.writeText(selectedPaymentAccount!.alias!);
+                            toast.success("Alias copiado");
+                          }}
+                        >
+                          <ClipboardCopy className="size-3.5" /> Copiar alias
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>

@@ -12,6 +12,7 @@ const TABS = [
   { href: "/admin/condiciones-precio", label: "Condiciones de precio" },
   { href: "/admin/promociones", label: "Promociones" },
   { href: "/admin/facturacion", label: "Facturación pendiente" },
+  { href: "/admin/cuentas", label: "Bancos / Cuentas" },
   { href: "/admin/doctores", label: "Doctoras" },
   { href: "/admin/usuarios", label: "Usuarios" },
 ];

@@ -38,7 +38,9 @@ export default async function NewSalePage() {
       .order("name"),
     supabase.from("sales_channels").select("id, code, name").eq("active", true).order("sort_order"),
     supabase.from("payment_methods").select("id, code, name").eq("active", true).order("sort_order"),
-    supabase.from("payment_accounts").select("id, code, name").eq("active", true).order("sort_order"),
+    // alias viene junto con el listado inicial — nunca una consulta extra
+    // al elegir cuenta en el selector (sección 15 del pedido).
+    supabase.from("payment_accounts").select("id, code, name, alias").eq("active", true).order("sort_order"),
     supabase.from("doctors").select("id, code, full_name").eq("active", true).order("full_name"),
     // display_order: orden visual pedido por el negocio (productos, después
     // kits, después accesorios) — cambio EXCLUSIVAMENTE de esta pantalla, ver
