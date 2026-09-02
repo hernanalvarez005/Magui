@@ -13,6 +13,11 @@ export async function GET(request: NextRequest) {
   let salesQuery = supabase
     .from("sales")
     .select("id, sale_number, sold_at, location_id")
+    // status=confirmed: nunca sale_items de una venta cancelada o reemplazada
+    // por un cambio (Cambios/Devoluciones) — sin este filtro, después de un
+    // cambio, el mismo producto quedaba dos veces en este export (una vez
+    // desde la venta original, ya no vigente, y otra desde la de reemplazo).
+    .eq("status", "confirmed")
     .order("sold_at", { ascending: false })
     .limit(2000);
 

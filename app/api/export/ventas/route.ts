@@ -24,7 +24,8 @@ export async function GET(request: NextRequest) {
   const doctor = params.get("doctor");
   const payment = params.get("payment");
   const rawStatus = params.get("status");
-  const status = rawStatus === "confirmed" || rawStatus === "cancelled" ? rawStatus : null;
+  const status =
+    rawStatus === "confirmed" || rawStatus === "cancelled" || rawStatus === "replaced" ? rawStatus : null;
 
   if (from) query = query.gte("sold_at", `${from}T00:00:00-03:00`);
   if (to) query = query.lte("sold_at", `${to}T23:59:59-03:00`);
