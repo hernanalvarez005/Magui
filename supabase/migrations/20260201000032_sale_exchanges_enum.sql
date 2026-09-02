@@ -1,0 +1,13 @@
+-- =============================================================================
+-- Maguirejuve · 42 · Cambios / Devoluciones — nuevo estado de venta (paso 1/3)
+-- =============================================================================
+-- Un nuevo valor de enum con ALTER TYPE ... ADD VALUE no puede usarse en la
+-- misma transacción en la que se agrega (restricción de Postgres) — mismo
+-- criterio ya aplicado en 20260201000022_viewer_role_enum.sql. Este archivo va
+-- SOLO; todo lo que usa 'replaced' vive en las migraciones siguientes.
+--
+-- Se usa minúscula ('replaced') para seguir la convención YA vigente de este
+-- enum puntual (draft/confirmed/cancelled son minúscula) — a diferencia de
+-- sale_billing_status/free_sale_reason (mayúscula), que son enums distintos
+-- creados después con otro criterio. No se mezclan estilos dentro del mismo enum.
+alter type public.sale_status add value 'replaced';
