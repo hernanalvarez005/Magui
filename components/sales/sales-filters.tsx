@@ -167,6 +167,7 @@ export function SalesFilters({
             <SelectItem value="confirmed">Confirmadas</SelectItem>
             <SelectItem value="cancelled">Canceladas</SelectItem>
             <SelectItem value="replaced">Reemplazadas por un cambio</SelectItem>
+            <SelectItem value="returned">Devueltas en su totalidad</SelectItem>
           </SelectContent>
         </Select>
         <Select defaultValue={searchParams.get("doctor") ?? "all"} onValueChange={(v) => setParams({ doctor: v })}>

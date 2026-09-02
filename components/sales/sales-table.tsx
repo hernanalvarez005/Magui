@@ -125,6 +125,9 @@ function SaleStatusBadge({ status }: { status: SaleRow["status"] }) {
   // Reemplazada por un cambio de producto — nunca "Confirmada" (no cuenta en
   // ninguna métrica activa, y no es ni un borrador ni una anulación).
   if (status === "replaced") return <Badge variant="outline">Reemplazada</Badge>;
+  // Devuelta en su totalidad (neto $0 en todas sus líneas) — distinto de
+  // 'replaced': acá el dinero volvió al cliente, no se llevó nada a cambio.
+  if (status === "returned") return <Badge variant="outline">Devuelta</Badge>;
   if (status === "draft") return <Badge variant="secondary">Borrador</Badge>;
   return <Badge variant="success">Confirmada</Badge>;
 }

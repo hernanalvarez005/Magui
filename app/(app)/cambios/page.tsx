@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { getCurrentProfile } from "@/lib/auth/get-profile";
 import { createClient } from "@/lib/supabase/server";
-import { CambiosClient } from "@/components/cambios/cambios-client";
+import { CambiosHub } from "@/components/cambios/cambios-hub";
 
 export const metadata: Metadata = { title: "Cambios / Devoluciones" };
 
@@ -11,8 +11,9 @@ export default async function CambiosPage() {
   const profile = await getCurrentProfile();
 
   // Defensa en profundidad: el rol viewer (solo lectura) ya no ve este link
-  // en la navegación, y create_sale_exchange lo rechaza en el backend — esto
-  // evita además que llegue por URL directa a un flujo que no va a poder usar.
+  // en la navegación, y create_sale_exchange/create_sale_return lo rechazan
+  // en el backend — esto evita además que llegue por URL directa a un flujo
+  // que no va a poder usar.
   if (profile.role === "viewer") {
     redirect("/ventas");
   }
@@ -40,7 +41,7 @@ export default async function CambiosPage() {
   }
 
   return (
-    <CambiosClient
+    <CambiosHub
       products={(products ?? []).map((p) => ({ ...p, kitContents: kitContents.get(p.id) ?? null }))}
     />
   );

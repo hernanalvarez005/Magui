@@ -69,6 +69,52 @@ export default async function SaleDetailPage(props: PageProps<"/ventas/[id]">) {
     : { data: [] as { id: string; name: string; sku: string }[] };
   const productMap = new Map((products ?? []).map((p) => [p.id, p]));
 
+  // Devoluciones (sección 38 del pedido): NUNCA reemplazan/ocultan la venta
+  // original en pantalla — se listan aparte, como un evento más de su
+  // historial. Mismo patrón manual de joins que el resto de esta página (sin
+  // embedding de PostgREST), consulta por consulta.
+  const { data: returns } = await supabase
+    .from("sale_returns")
+    .select("*")
+    .eq("original_sale_id", id)
+    .order("created_at");
+  const returnIds = (returns ?? []).map((r) => r.id);
+  const { data: returnItems } = returnIds.length
+    ? await supabase.from("sale_return_items").select("*").in("return_id", returnIds)
+    : { data: [] as { return_id: string; product_id: string; quantity: string; unit_price_refunded: string; line_refund_total: string }[] };
+  const returnItemsByReturn = new Map<string, typeof returnItems>();
+  for (const ri of returnItems ?? []) {
+    const list = returnItemsByReturn.get(ri.return_id) ?? [];
+    list.push(ri);
+    returnItemsByReturn.set(ri.return_id, list);
+  }
+  const returnAccountIds = Array.from(new Set((returns ?? []).flatMap((r) => (r.payment_account_id ? [r.payment_account_id] : []))));
+  const { data: returnAccounts } = returnAccountIds.length
+    ? await supabase.from("payment_accounts").select("id, name").in("id", returnAccountIds)
+    : { data: [] as { id: string; name: string }[] };
+  const returnAccountMap = new Map((returnAccounts ?? []).map((a) => [a.id, a.name]));
+  const returnCreatorIds = Array.from(new Set((returns ?? []).map((r) => r.created_by)));
+  const { data: returnCreators } = returnCreatorIds.length
+    ? await supabase.from("profiles").select("id, full_name").in("id", returnCreatorIds)
+    : { data: [] as { id: string; full_name: string }[] };
+  const returnCreatorMap = new Map((returnCreators ?? []).map((p) => [p.id, p.full_name]));
+
+  const returnsForView = (returns ?? []).map((r) => ({
+    id: r.id,
+    refund_amount: r.refund_amount,
+    refund_method: r.refund_method,
+    payment_account_name: r.payment_account_id ? (returnAccountMap.get(r.payment_account_id) ?? null) : null,
+    notes: r.notes,
+    created_at: r.created_at,
+    created_by_name: returnCreatorMap.get(r.created_by) ?? null,
+    items: (returnItemsByReturn.get(r.id) ?? []).map((ri) => ({
+      product_name: productMap.get(ri.product_id)?.name ?? ri.product_id,
+      quantity: ri.quantity,
+      unit_price_refunded: ri.unit_price_refunded,
+      line_refund_total: ri.line_refund_total,
+    })),
+  }));
+
   return (
     <SaleDetailView
       sale={sale}
@@ -85,6 +131,7 @@ export default async function SaleDetailPage(props: PageProps<"/ventas/[id]">) {
       movements={movements ?? []}
       replacedBy={replacedBy}
       replacesOriginal={replacesOriginal}
+      returns={returnsForView}
       // Admin y vendedora pueden anular (sección 16 del pedido) — el backend
       // (cancel_sale) es la fuente final de verdad: valida usuario activo y
       // acceso a la sede de la venta, esto solo decide si se muestra el botón.

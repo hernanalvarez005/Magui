@@ -6,7 +6,7 @@ export type AppRole = "admin" | "seller" | "viewer";
 export type StockLocationType = "branch" | "warehouse";
 export type ProductType = "product" | "accessory" | "kit";
 export type PriceRuleType = "BASE" | "PAYMENT_METHOD" | "QUANTITY";
-export type SaleStatus = "draft" | "confirmed" | "cancelled" | "replaced";
+export type SaleStatus = "draft" | "confirmed" | "cancelled" | "replaced" | "returned";
 export type StockMovementType =
   | "INITIAL"
   | "PURCHASE"
@@ -28,6 +28,7 @@ export type StockAdjustmentReason =
   | "OTHER";
 export type FreeSaleReason = "GIFT" | "SAMPLE" | "EXCHANGE" | "COURTESY" | "OTHER";
 export type PromotionType = "THREE_FOR_TWO" | "DUO_PERCENT" | "KIT_PERCENT";
+export type SaleRefundMethod = "CASH" | "TRANSFER";
 
 // ---------------------------------------------------------------------------
 // Row shapes (una interfaz por tabla/vista)
@@ -492,6 +493,81 @@ export type ExchangeableSale = {
   items: ExchangeableSaleItem[];
 };
 
+export type SaleReturnRow = {
+  id: string;
+  original_sale_id: string;
+  refund_amount: string;
+  refund_method: SaleRefundMethod;
+  payment_account_id: string | null;
+  notes: string | null;
+  created_by: string;
+  created_at: string;
+};
+
+export type SaleReturnItemRow = {
+  id: string;
+  return_id: string;
+  sale_item_id: string;
+  product_id: string;
+  quantity: string;
+  unit_price_refunded: string;
+  line_refund_total: string;
+};
+
+/** sale_items con lo devuelto restado — punto único de "neto de devoluciones" (ver comentario en la migración). */
+export type SaleItemNetRow = {
+  sale_item_id: string;
+  sale_id: string;
+  product_id: string;
+  gross_quantity: number;
+  sale_unit_price: number;
+  gross_line_total: number;
+  commissionable: boolean;
+  applied_promotion_id: string | null;
+  returned_quantity: number;
+  returned_amount: number;
+  net_quantity: number;
+  net_line_total: number;
+};
+
+/** Una línea de sale_items, tal como la devuelve customer_sales_for_return (para elegir qué se devuelve). */
+export type ReturnableSaleItem = {
+  sale_item_id: string;
+  product_id: string;
+  name: string;
+  sku: string;
+  product_type: ProductType;
+  quantity: number;
+  sale_unit_price: number;
+  returned_quantity: number;
+  available_to_return: number;
+};
+
+/** Una venta del cliente elegible como origen de una devolución (customer_sales_for_return). */
+export type ReturnableSale = {
+  sale_id: string;
+  sale_number: string;
+  sold_at: string;
+  location_id: string;
+  location_name: string;
+  payment_method_id: string;
+  payment_method_code: string;
+  payment_method_name: string;
+  billing_status: SaleBillingStatus;
+  total: number;
+  items: ReturnableSaleItem[];
+};
+
+export type CreateSaleReturnResult = {
+  return_id: string;
+  original_sale_id: string;
+  refund_amount: number;
+  refund_method: SaleRefundMethod;
+  is_full_return: boolean;
+  sale_status: SaleStatus;
+  billing_status: SaleBillingStatus;
+};
+
 export type ExchangeNewItemPriceResult =
   | {
       ok: true;
@@ -712,10 +788,14 @@ export type Database = {
       // Se escriben EXCLUSIVAMENTE vía create_sale_exchange / mark_exchange_difference_settled/_pending.
       sale_exchanges: { Row: SaleExchangeRow; Insert: never; Update: never; Relationships: [] };
       sale_exchange_items: { Row: SaleExchangeItemRow; Insert: never; Update: never; Relationships: [] };
+      // Se escriben EXCLUSIVAMENTE vía create_sale_return.
+      sale_returns: { Row: SaleReturnRow; Insert: never; Update: never; Relationships: [] };
+      sale_return_items: { Row: SaleReturnItemRow; Insert: never; Update: never; Relationships: [] };
     };
     Views: {
       kit_availability: { Row: KitAvailabilityRow; Relationships: [] };
       product_stock_status: { Row: ProductStockStatusRow; Relationships: [] };
+      sale_item_net: { Row: SaleItemNetRow; Relationships: [] };
     };
     Functions: {
       quote_sale: {
@@ -883,6 +963,20 @@ export type Database = {
         Args: { p_exchange_id: string };
         Returns: { exchange_id: string; difference_settlement_status: "PENDING" };
       };
+      customer_sales_for_return: {
+        Args: { p_customer_id: string };
+        Returns: ReturnableSale[];
+      };
+      create_sale_return: {
+        Args: {
+          p_original_sale_id: string;
+          p_items: { sale_item_id: string; quantity: number }[];
+          p_refund_method: SaleRefundMethod;
+          p_payment_account_id?: string | null;
+          p_notes?: string | null;
+        };
+        Returns: CreateSaleReturnResult;
+      };
       create_web_order: {
         Args: {
           p_items: PricingItemInput[];
@@ -909,6 +1003,7 @@ export type Database = {
       stock_adjustment_reason: StockAdjustmentReason;
       sale_exchange_direction: SaleExchangeDirection;
       sale_settlement_status: SaleSettlementStatus;
+      sale_refund_method: SaleRefundMethod;
     };
   };
 };

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, PackageMinus, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Banknote, CheckCircle2, Landmark, PackageMinus, Undo2, XCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { CancelSaleDialog } from "@/components/sales/cancel-sale-dialog";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
-import type { FreeSaleReason, SaleItemRow, SaleRow, StockMovementRow } from "@/types/database";
+import type { FreeSaleReason, SaleItemRow, SaleRefundMethod, SaleRow, StockMovementRow } from "@/types/database";
 
 const FREE_SALE_LABELS: Record<FreeSaleReason, string> = {
   GIFT: "Regalo",
@@ -35,6 +35,17 @@ interface Props {
   replacedBy?: { id: string; sale_number: string } | null;
   /** Cambios/Devoluciones: esta venta ES la operación nueva de un cambio -> la venta que reemplaza. */
   replacesOriginal?: { id: string; sale_number: string } | null;
+  /** Devolución de producto (sección 38 del pedido): NUNCA reemplaza/oculta la venta original — se lista aparte. */
+  returns?: {
+    id: string;
+    refund_amount: string;
+    refund_method: SaleRefundMethod;
+    payment_account_name: string | null;
+    notes: string | null;
+    created_at: string;
+    created_by_name: string | null;
+    items: { product_name: string; quantity: string; unit_price_refunded: string; line_refund_total: string }[];
+  }[];
 }
 
 export function SaleDetailView({
@@ -53,6 +64,7 @@ export function SaleDetailView({
   canCancel,
   replacedBy,
   replacesOriginal,
+  returns = [],
 }: Props) {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5 p-4 md:p-6">
@@ -75,9 +87,17 @@ export function SaleDetailView({
               <Badge variant="destructive">Cancelada</Badge>
             ) : sale.status === "replaced" ? (
               <Badge variant="outline">Anulada / Reemplazada por cambio</Badge>
+            ) : sale.status === "returned" ? (
+              <Badge variant="outline">Devuelta en su totalidad</Badge>
             ) : (
               <Badge variant="success">Confirmada</Badge>
             )}
+            {/* Una venta 'confirmed' con devoluciones parciales sigue siendo una
+                venta válida (regla crítica, sección 19 del pedido) — este badge
+                es solo informativo, nunca reemplaza el estado real. */}
+            {sale.status === "confirmed" && returns.length > 0 ? (
+              <Badge variant="secondary">Con devolución parcial</Badge>
+            ) : null}
             {sale.is_free_sale ? <Badge variant="secondary">Sin costo · {FREE_SALE_LABELS[sale.free_sale_reason ?? "OTHER"]}</Badge> : null}
             {sale.stock_skipped ? <Badge variant="outline">Carga histórica · sin stock</Badge> : null}
           </div>
@@ -114,6 +134,21 @@ export function SaleDetailView({
           <Link href={`/ventas/${replacesOriginal.id}`} className="font-medium text-primary hover:underline">
             Ver venta original ({replacesOriginal.sale_number})
           </Link>
+        </div>
+      ) : null}
+
+      {/* Precisión #6 (aprobada por el usuario): una devolución comercial
+          NUNCA reabre ni modifica el comprobante fiscal ya emitido — eso es
+          un proceso externo de nota de crédito, fuera de alcance de este
+          módulo. Esta advertencia se muestra solo cuando ya hubo alguna
+          devolución sobre una venta que además está facturada. */}
+      {sale.billing_status === "INVOICED" && returns.length > 0 ? (
+        <div className="flex items-start gap-2 rounded-md border border-amber-600/30 bg-amber-600/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-400">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>
+            Esta venta ya está facturada. La devolución comercial registrada abajo no modifica el comprobante
+            fiscal original — si corresponde ajustarlo, hace falta una nota de crédito por fuera de este sistema.
+          </span>
         </div>
       ) : null}
 
@@ -199,6 +234,49 @@ export function SaleDetailView({
           </div>
         </CardContent>
       </Card>
+
+      {returns.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Devoluciones</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4 p-5 pt-0">
+            {returns.map((ret) => {
+              const AccountIcon = ret.refund_method === "TRANSFER" ? Landmark : Banknote;
+              return (
+                <div key={ret.id} className="rounded-lg border border-border p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-sm font-medium">
+                      <Undo2 className="size-4 text-muted-foreground" />
+                      {formatDateTime(ret.created_at)}
+                      {ret.created_by_name ? (
+                        <span className="font-normal text-muted-foreground">· {ret.created_by_name}</span>
+                      ) : null}
+                    </div>
+                    <span className="font-semibold text-destructive">-{formatCurrency(ret.refund_amount)}</span>
+                  </div>
+                  <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                    <AccountIcon className="size-3" />
+                    Reintegrado por {ret.refund_method === "TRANSFER" ? "transferencia" : "efectivo"}
+                    {ret.payment_account_name ? ` · ${ret.payment_account_name}` : ""}
+                  </p>
+                  <div className="mt-2 flex flex-col gap-1 text-xs text-muted-foreground">
+                    {ret.items.map((item, idx) => (
+                      <div key={idx} className="flex justify-between">
+                        <span>
+                          {item.quantity} × {item.product_name} (a {formatCurrency(item.unit_price_refunded)})
+                        </span>
+                        <span>{formatCurrency(item.line_refund_total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {ret.notes ? <p className="mt-2 text-xs text-muted-foreground">{ret.notes}</p> : null}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {sale.notes ? (
         <Card>
