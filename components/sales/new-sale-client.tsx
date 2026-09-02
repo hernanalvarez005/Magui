@@ -1007,6 +1007,12 @@ function CartSummary({
             </Badge>
             {quote.discount_total > 0 ? (
               <span className="text-success-foreground">-{formatCurrency(quote.discount_total)}</span>
+            ) : quote.surcharge_total > 0 ? (
+              // Una condición más cara que Lista (ej. cuotas) es un recargo
+              // válido, no un descuento negativo — se muestra aparte, solo
+              // cuando realmente aporta valor (nunca junto al descuento: son
+              // complementarios, nunca los dos > 0 a la vez).
+              <span className="text-destructive">+{formatCurrency(quote.surcharge_total)}</span>
             ) : null}
           </div>
           <Separator className="my-1" />
@@ -1052,10 +1058,16 @@ function ReceiptView({ receipt, onNewSale }: { receipt: CreateSaleResult; onNewS
           ))}
         </div>
         <Separator className="my-3" />
-        <div className="flex justify-between text-sm text-muted-foreground">
-          <span>{receipt.applied_price_condition_name ?? receipt.explanation}</span>
-          <span>-{formatCurrency(receipt.discount_total)}</span>
-        </div>
+        {receipt.discount_total > 0 || (receipt.surcharge_total ?? 0) > 0 ? (
+          <div className="flex justify-between text-sm text-muted-foreground">
+            <span>{receipt.applied_price_condition_name ?? receipt.explanation}</span>
+            {receipt.discount_total > 0 ? (
+              <span>-{formatCurrency(receipt.discount_total)}</span>
+            ) : (
+              <span className="text-destructive">+{formatCurrency(receipt.surcharge_total ?? 0)}</span>
+            )}
+          </div>
+        ) : null}
         <div className="mt-1 flex items-center justify-between">
           <span className="font-semibold">TOTAL</span>
           <span className="text-2xl font-bold">{formatCurrency(receipt.total)}</span>

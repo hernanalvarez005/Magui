@@ -127,6 +127,8 @@ export function quoteSale(
   const lines: PricingLine[] = [];
   let subtotal = 0;
   let total = 0;
+  let discountTotal = 0;
+  let surchargeTotal = 0;
 
   for (const item of items) {
     const product = productsById.get(item.product_id)!;
@@ -146,10 +148,17 @@ export function quoteSale(
 
     const lineListTotal = round2(listUnitPrice * item.quantity);
     const lineTotal = round2(saleUnitPrice * item.quantity);
-    const lineDiscount = round2((listUnitPrice - saleUnitPrice) * item.quantity);
+    // Una condición más cara que Lista (ej. cuotas) es un recargo comercial
+    // válido, no un error — complementarios y siempre >= 0, sumados desde
+    // las líneas (nunca derivados como subtotal - total). Mismo criterio que
+    // fn_pricing_quote (ver supabase/migrations/*_pricing_surcharge_*).
+    const lineDiscount = round2(Math.max((listUnitPrice - saleUnitPrice) * item.quantity, 0));
+    const lineSurcharge = round2(Math.max((saleUnitPrice - listUnitPrice) * item.quantity, 0));
 
     subtotal += lineListTotal;
     total += lineTotal;
+    discountTotal += lineDiscount;
+    surchargeTotal += lineSurcharge;
 
     lines.push({
       product_id: item.product_id,
@@ -160,13 +169,12 @@ export function quoteSale(
       sale_unit_price: saleUnitPrice,
       line_list_total: lineListTotal,
       line_discount: lineDiscount,
+      line_surcharge: lineSurcharge,
       line_total: lineTotal,
       commissionable: product.commissionable,
       applied_price_condition_id: winningCondition.id,
     });
   }
-
-  const discountTotal = round2(subtotal - total);
 
   const explanation =
     winningCondition.rule_type === "BASE"
@@ -183,7 +191,8 @@ export function quoteSale(
     applied_price_condition_name: winningCondition.name,
     explanation,
     subtotal: round2(subtotal),
-    discount_total: discountTotal,
+    discount_total: round2(discountTotal),
+    surcharge_total: round2(surchargeTotal),
     total: round2(total),
     lines,
   };

@@ -170,10 +170,21 @@ export function SaleDetailView({
               <span>Subtotal lista</span>
               <span>{formatCurrency(sale.subtotal)}</span>
             </div>
-            <div className="flex justify-between text-muted-foreground">
-              <span>Descuento</span>
-              <span>-{formatCurrency(sale.discount_total)}</span>
-            </div>
+            {Number(sale.discount_total) > 0 ? (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Descuento</span>
+                <span>-{formatCurrency(sale.discount_total)}</span>
+              </div>
+            ) : null}
+            {Number(sale.surcharge_total) > 0 ? (
+              // Una condición más cara que Lista (ej. cuotas) es un recargo
+              // comercial válido — se muestra solo cuando aporta valor,
+              // nunca junto al descuento (son complementarios).
+              <div className="flex justify-between text-muted-foreground">
+                <span>Recargo</span>
+                <span className="text-destructive">+{formatCurrency(sale.surcharge_total)}</span>
+              </div>
+            ) : null}
             <Separator className="my-1" />
             <div className="flex justify-between text-base font-semibold">
               <span>Total</span>

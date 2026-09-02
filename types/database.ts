@@ -180,6 +180,9 @@ export type SaleRow = {
   applied_price_condition_id: string | null;
   subtotal: string;
   discount_total: string;
+  // Recargo comercial: una condición de pago más cara que Lista (ej. cuotas)
+  // es válida, no un error — total = subtotal - discount_total + surcharge_total.
+  surcharge_total: string;
   total: string;
   commission_total: string;
   status: SaleStatus;
@@ -218,6 +221,9 @@ export type SaleItemRow = {
   sale_unit_price: string;
   line_list_total: string;
   line_discount: string;
+  // Complementario de line_discount (nunca los dos > 0 en la misma línea) —
+  // ver comentario en SaleRow.surcharge_total.
+  line_surcharge: string;
   line_total: string;
   applied_price_condition_id: string | null;
   commissionable: boolean;
@@ -371,6 +377,7 @@ export type PricingLine = {
   sale_unit_price: number;
   line_list_total: number;
   line_discount: number;
+  line_surcharge: number;
   line_total: number;
   commissionable: boolean;
   applied_price_condition_id: string | null;
@@ -389,6 +396,7 @@ export type PricingQuoteResult =
       explanation: string;
       subtotal: number;
       discount_total: number;
+      surcharge_total: number;
       total: number;
       lines: PricingLine[];
     }
@@ -400,6 +408,7 @@ export type CreateSaleResult = {
   total: number;
   subtotal: number;
   discount_total: number;
+  surcharge_total?: number;
   commission_total: number;
   applied_price_condition_name: string | null;
   explanation: string;
@@ -496,6 +505,7 @@ export type ExchangeNewItemPriceResult =
       sale_unit_price: number;
       line_list_total: number;
       line_discount: number;
+      line_surcharge: number;
       line_total: number;
     }
   | { ok: false; error_message: string };
@@ -506,6 +516,7 @@ export type CreateSaleExchangeResult = {
   sale_id: string;
   sale_number: string;
   total: number;
+  surcharge_total: number;
   recognized_value: number;
   new_item_total: number;
   difference_amount: number;
