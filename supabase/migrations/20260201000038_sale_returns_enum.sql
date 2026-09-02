@@ -1,0 +1,19 @@
+-- =============================================================================
+-- Maguirejuve · 45 · Devolución de producto — nuevo estado de venta (paso 1/3)
+-- =============================================================================
+-- Mismo motivo/patrón que 20260201000032_sale_exchanges_enum.sql: ALTER TYPE
+-- ... ADD VALUE no puede usarse en la misma transacción en la que se agrega
+-- (restricción de Postgres). Este archivo va SOLO; todo lo que usa 'returned'
+-- vive en las migraciones siguientes.
+--
+-- PASO 0 (auditoría completa entregada al usuario, aprobada con 6 precisiones
+-- explícitas). Semántica de 'returned', cerrada con el usuario: se aplica
+-- ÚNICAMENTE cuando una devolución deja el valor comercial neto de TODAS las
+-- líneas de la venta en exactamente $0 (devolución total) — nunca en una
+-- devolución parcial, que deja la venta en 'confirmed' (el resto de sus
+-- líneas sigue siendo una venta válida). Es un valor de estado NUEVO, propio
+-- de Devolución — 'replaced' sigue siendo exclusivo de Cambios, no se reutiliza.
+--
+-- Minúscula, igual que el resto de este enum puntual (draft/confirmed/
+-- cancelled/replaced) — mismo criterio ya documentado en el archivo hermano.
+alter type public.sale_status add value 'returned';
