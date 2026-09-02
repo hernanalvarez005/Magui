@@ -20,6 +20,10 @@ import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import type { SaleBillingStatus } from "@/types/database";
 
+interface BillingItem {
+  name: string;
+  quantity: number;
+}
 interface BillingRow {
   id: string;
   sale_number: string;
@@ -31,6 +35,40 @@ interface BillingRow {
   accountName?: string;
   paymentName?: string;
   invoicedByName?: string;
+  items: BillingItem[];
+}
+
+// Hasta acá se muestra completo; con más ítems se corta y se puede expandir
+// ("Ver más"), nunca obligando a abrir el detalle completo de la venta
+// aparte (sección 8 del pedido).
+const DETAIL_VISIBLE_LIMIT = 3;
+
+function DetailCell({ items }: { items: BillingItem[] }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (items.length === 0) return <span className="text-xs text-muted-foreground">—</span>;
+
+  const visible = expanded ? items : items.slice(0, DETAIL_VISIBLE_LIMIT);
+  const hidden = items.length - visible.length;
+
+  return (
+    <div className="flex flex-col gap-0.5 text-xs">
+      {visible.map((item, i) => (
+        <span key={i} className="break-words">
+          {item.name} × {item.quantity}
+        </span>
+      ))}
+      {hidden > 0 ? (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="text-left font-medium text-primary hover:underline"
+        >
+          Ver más (+{hidden})
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 const STATUS_LABEL: Record<SaleBillingStatus, string> = {
@@ -73,6 +111,7 @@ export function BillingTable({ rows, showInvoicedColumns }: { rows: BillingRow[]
               <TableHead>Fecha</TableHead>
               <TableHead>Cliente</TableHead>
               <TableHead>DNI</TableHead>
+              <TableHead>Detalle</TableHead>
               <TableHead className="text-right">Importe</TableHead>
               <TableHead>Cuenta</TableHead>
               <TableHead>Pago</TableHead>
@@ -87,6 +126,9 @@ export function BillingTable({ rows, showInvoicedColumns }: { rows: BillingRow[]
                 <TableCell className="text-sm">{formatDateTime(row.sold_at)}</TableCell>
                 <TableCell className="text-sm font-medium">{row.customer?.full_name ?? "—"}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{row.customer?.dni ?? "—"}</TableCell>
+                <TableCell className="max-w-56 whitespace-normal align-top">
+                  <DetailCell items={row.items} />
+                </TableCell>
                 <TableCell className="text-right text-sm font-medium tabular-nums">
                   {formatCurrency(Number(row.total))}
                 </TableCell>

@@ -55,6 +55,7 @@ export default async function BillingPage(props: PageProps<"/admin/facturacion">
 
   const { data: sales, count } = await query;
 
+  const saleIds = (sales ?? []).map((s) => s.id);
   const customerIds = Array.from(new Set((sales ?? []).map((s) => s.customer_id).filter((id): id is string => !!id)));
   const accountIds = Array.from(
     new Set((sales ?? []).map((s) => s.payment_account_id).filter((id): id is string => !!id))
@@ -64,7 +65,7 @@ export default async function BillingPage(props: PageProps<"/admin/facturacion">
     new Set((sales ?? []).map((s) => s.invoiced_by).filter((id): id is string => !!id))
   );
 
-  const [{ data: customers }, { data: accounts }, { data: paymentMethods }, { data: invoicedByProfiles }] =
+  const [{ data: customers }, { data: accounts }, { data: paymentMethods }, { data: invoicedByProfiles }, { data: saleItems }] =
     await Promise.all([
       customerIds.length
         ? supabase.from("customers").select("id, full_name, dni").in("id", customerIds)
@@ -78,7 +79,38 @@ export default async function BillingPage(props: PageProps<"/admin/facturacion">
       invoicedByIds.length
         ? supabase.from("profiles").select("id, full_name").in("id", invoicedByIds)
         : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),
+      // Detalle de "qué se compró" (sección 1-3 del pedido): sale_items es la
+      // fuente de verdad comercial — un kit vendido queda UNA fila acá (con
+      // su propio product_id de kit), aunque internamente haya descontado
+      // stock de sus componentes por separado (fn_apply_stock_movement).
+      // Nunca se reconstruye mirando movimientos de stock. Solo las 3
+      // columnas que realmente se usan, nunca select("*") (sección 10).
+      saleIds.length
+        ? supabase
+            .from("sale_items")
+            .select("sale_id, product_id, quantity")
+            .in("sale_id", saleIds)
+            .order("created_at")
+        : Promise.resolve({ data: [] as { sale_id: string; product_id: string; quantity: string }[] }),
     ]);
+
+  // sale_items solo guarda product_id (no un snapshot de nombre) — el
+  // nombre se resuelve vía join a products, mismo criterio que ya usa
+  // /ventas/[id] para el detalle de una venta. Una sola query batcheada acá
+  // (nunca 1 por venta): sin importar cuántas ventas/ítems haya en la
+  // página, siempre son 5 queries fijas (sección 9 del pedido).
+  const itemProductIds = Array.from(new Set((saleItems ?? []).map((i) => i.product_id)));
+  const { data: itemProducts } = itemProductIds.length
+    ? await supabase.from("products").select("id, name").in("id", itemProductIds)
+    : { data: [] as { id: string; name: string }[] };
+  const itemProductNameById = new Map((itemProducts ?? []).map((p) => [p.id, p.name]));
+
+  const itemsBySale = new Map<string, { name: string; quantity: number }[]>();
+  for (const item of saleItems ?? []) {
+    const list = itemsBySale.get(item.sale_id) ?? [];
+    list.push({ name: itemProductNameById.get(item.product_id) ?? "Producto eliminado", quantity: Number(item.quantity) });
+    itemsBySale.set(item.sale_id, list);
+  }
 
   const customerMap = new Map((customers ?? []).map((c) => [c.id, c]));
   const accountMap = new Map((accounts ?? []).map((a) => [a.id, a.name]));
@@ -91,6 +123,7 @@ export default async function BillingPage(props: PageProps<"/admin/facturacion">
     accountName: s.payment_account_id ? accountMap.get(s.payment_account_id) : undefined,
     paymentName: paymentMap.get(s.payment_method_id),
     invoicedByName: s.invoiced_by ? invoicedByMap.get(s.invoiced_by) : undefined,
+    items: itemsBySale.get(s.id) ?? [],
   }));
 
   const totalPages = count ? Math.ceil(count / PAGE_SIZE) : 1;
