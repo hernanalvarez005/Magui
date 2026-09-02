@@ -27,6 +27,8 @@ export default async function SaleDetailPage(props: PageProps<"/ventas/[id]">) {
     { data: condition },
     { data: cancelledBy },
     { data: movements },
+    { data: replacedBy },
+    { data: replacesOriginal },
   ] = await Promise.all([
     supabase.from("sale_items").select("*").eq("sale_id", id),
     supabase.from("stock_locations").select("code, name").eq("id", sale.location_id).single(),
@@ -51,6 +53,14 @@ export default async function SaleDetailPage(props: PageProps<"/ventas/[id]">) {
       ? supabase.from("profiles").select("full_name").eq("id", sale.cancelled_by).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase.from("stock_movements").select("*").eq("sale_id", id).order("occurred_at"),
+    // Cambios/Devoluciones — vínculo en las DOS direcciones (sección 34 del
+    // pedido). replacedBy: esta venta fue reemplazada por un cambio
+    // (status=replaced) -> la operación nueva. originatesFrom: esta venta ES
+    // la operación nueva de un cambio -> la venta que reemplaza.
+    supabase.from("sales").select("id, sale_number").eq("replaces_sale_id", id).maybeSingle(),
+    sale.replaces_sale_id
+      ? supabase.from("sales").select("id, sale_number").eq("id", sale.replaces_sale_id).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   const productIds = Array.from(new Set((items ?? []).map((i) => i.product_id)));
@@ -73,6 +83,8 @@ export default async function SaleDetailPage(props: PageProps<"/ventas/[id]">) {
       condition={condition}
       cancelledByName={cancelledBy?.full_name}
       movements={movements ?? []}
+      replacedBy={replacedBy}
+      replacesOriginal={replacesOriginal}
       // Admin y vendedora pueden anular (sección 16 del pedido) — el backend
       // (cancel_sale) es la fuente final de verdad: valida usuario activo y
       // acceso a la sede de la venta, esto solo decide si se muestra el botón.

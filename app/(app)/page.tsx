@@ -116,9 +116,8 @@ export default async function HomePage() {
                   <p className="text-xs text-muted-foreground">{formatDateTime(sale.sold_at)}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {sale.status === "cancelled" ? (
-                    <Badge variant="destructive">Cancelada</Badge>
-                  ) : null}
+                  {sale.status === "cancelled" ? <Badge variant="destructive">Cancelada</Badge> : null}
+                  {sale.status === "replaced" ? <Badge variant="outline">Reemplazada</Badge> : null}
                   <span className="font-medium">{formatCurrency(sale.total)}</span>
                 </div>
               </Link>

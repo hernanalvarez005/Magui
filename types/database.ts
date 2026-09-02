@@ -6,7 +6,7 @@ export type AppRole = "admin" | "seller" | "viewer";
 export type StockLocationType = "branch" | "warehouse";
 export type ProductType = "product" | "accessory" | "kit";
 export type PriceRuleType = "BASE" | "PAYMENT_METHOD" | "QUANTITY";
-export type SaleStatus = "draft" | "confirmed" | "cancelled";
+export type SaleStatus = "draft" | "confirmed" | "cancelled" | "replaced";
 export type StockMovementType =
   | "INITIAL"
   | "PURCHASE"
@@ -199,6 +199,11 @@ export type SaleRow = {
   billing_status: SaleBillingStatus;
   invoiced_at: string | null;
   invoiced_by: string | null;
+  // Cambios/Devoluciones: si no es null, esta venta es la operación final de
+  // un cambio (reemplaza comercialmente a la venta apuntada, que queda en
+  // status='replaced'). La dirección inversa se resuelve por consulta
+  // (where replaces_sale_id = :id), no hay columna espejo.
+  replaces_sale_id: string | null;
 };
 
 /** NUNCA un booleano: existe un tercer caso real (no requiere control de facturación). */
@@ -219,6 +224,11 @@ export type SaleItemRow = {
   applied_promotion_id: string | null;
   promotion_discount: string;
   created_at: string;
+  // Cambios/Devoluciones: NULL en una línea de venta real. En una línea
+  // copiada/trasladada por un cambio (el remanente de una devolución
+  // parcial), apunta al sale_item RAÍZ que generó el movimiento de stock
+  // real — resolver siempre con physical_source_sale_item_id ?? id.
+  physical_source_sale_item_id: string | null;
 };
 
 export type PromotionRow = {
@@ -270,6 +280,11 @@ export type StockMovementRow = {
   notes: string | null;
   created_by: string | null;
   created_at: string;
+  // Cambios/Devoluciones: qué línea comercial (sale_items.id) causó este
+  // movimiento físico. Para un kit, es el sale_item DEL KIT, no de sus
+  // componentes — permite distinguir, en una misma venta, un kit de una
+  // unidad suelta del mismo componente.
+  source_sale_item_id: string | null;
 };
 
 export type StockTransferRow = {
@@ -404,6 +419,99 @@ export type CustomerPurchaseHistoryEntry = {
   is_free_sale: boolean;
   stock_skipped: boolean;
   items: { product_id: string; name: string; sku: string; quantity: number; line_total: number }[];
+};
+
+// ---------------------------------------------------------------------------
+// Cambios / Devoluciones
+// ---------------------------------------------------------------------------
+
+export type SaleExchangeDirection = "CUSTOMER_PAYS" | "BUSINESS_REFUNDS" | "NONE";
+/** Neutral a propósito: una diferencia puede ser a favor del cliente (se le devuelve dinero), no solo del negocio. */
+export type SaleSettlementStatus = "NOT_REQUIRED" | "PENDING" | "SETTLED";
+
+export type SaleExchangeRow = {
+  id: string;
+  original_sale_id: string;
+  replacement_sale_id: string;
+  difference_amount: string;
+  difference_direction: SaleExchangeDirection;
+  difference_settlement_status: SaleSettlementStatus;
+  settled_at: string | null;
+  settled_by: string | null;
+  notes: string | null;
+  created_by: string;
+  created_at: string;
+};
+
+export type SaleExchangeItemRow = {
+  id: string;
+  exchange_id: string;
+  direction: "RETURNED" | "ADDED";
+  source_sale_item_id: string | null;
+  product_id: string;
+  quantity: string;
+  unit_price: string;
+  line_total: string;
+};
+
+/** Una línea de sale_items, tal como la devuelve customer_sales_for_exchange (para elegir qué se devuelve). */
+export type ExchangeableSaleItem = {
+  sale_item_id: string;
+  product_id: string;
+  name: string;
+  sku: string;
+  product_type: ProductType;
+  quantity: number;
+  list_unit_price: number;
+  sale_unit_price: number;
+  line_total: number;
+};
+
+/** Una venta del cliente elegible como origen de un cambio (customer_sales_for_exchange). */
+export type ExchangeableSale = {
+  sale_id: string;
+  sale_number: string;
+  sold_at: string;
+  location_id: string;
+  location_name: string;
+  payment_method_id: string;
+  payment_method_code: string;
+  payment_method_name: string;
+  payment_account_id: string | null;
+  total: number;
+  is_free_sale: boolean;
+  items: ExchangeableSaleItem[];
+};
+
+export type ExchangeNewItemPriceResult =
+  | {
+      ok: true;
+      error_message: null;
+      product_id: string;
+      quantity: number;
+      applied_price_condition_id: string;
+      applied_price_condition_code: string;
+      applied_price_condition_name: string;
+      list_unit_price: number;
+      sale_unit_price: number;
+      line_list_total: number;
+      line_discount: number;
+      line_total: number;
+    }
+  | { ok: false; error_message: string };
+
+export type CreateSaleExchangeResult = {
+  exchange_id: string;
+  original_sale_id: string;
+  sale_id: string;
+  sale_number: string;
+  total: number;
+  recognized_value: number;
+  new_item_total: number;
+  difference_amount: number;
+  difference_direction: SaleExchangeDirection;
+  billing_status: SaleBillingStatus;
+  difference_settlement_status: SaleSettlementStatus;
 };
 
 export type DashboardReport = {
@@ -590,6 +698,9 @@ export type Database = {
         Update: Partial<AppSettingsRow>;
         Relationships: [];
       };
+      // Se escriben EXCLUSIVAMENTE vía create_sale_exchange / mark_exchange_difference_settled/_pending.
+      sale_exchanges: { Row: SaleExchangeRow; Insert: never; Update: never; Relationships: [] };
+      sale_exchange_items: { Row: SaleExchangeItemRow; Insert: never; Update: never; Relationships: [] };
     };
     Views: {
       kit_availability: { Row: KitAvailabilityRow; Relationships: [] };
@@ -729,6 +840,38 @@ export type Database = {
         Args: { p_doctor_id: string; p_from: string; p_to: string; p_location_id?: string | null };
         Returns: DoctorSalesDetail;
       };
+      customer_sales_for_exchange: {
+        Args: { p_customer_id: string };
+        Returns: ExchangeableSale[];
+      };
+      fn_exchange_new_item_price: {
+        Args: {
+          p_product_id: string;
+          p_quantity: number;
+          p_payment_method_id: string;
+          p_sold_at?: string;
+        };
+        Returns: ExchangeNewItemPriceResult;
+      };
+      create_sale_exchange: {
+        Args: {
+          p_original_sale_id: string;
+          p_returned_sale_item_id: string;
+          p_returned_quantity: number;
+          p_new_product_id: string;
+          p_new_quantity: number;
+          p_notes?: string | null;
+        };
+        Returns: CreateSaleExchangeResult;
+      };
+      mark_exchange_difference_settled: {
+        Args: { p_exchange_id: string };
+        Returns: { exchange_id: string; difference_settlement_status: "SETTLED" };
+      };
+      mark_exchange_difference_pending: {
+        Args: { p_exchange_id: string };
+        Returns: { exchange_id: string; difference_settlement_status: "PENDING" };
+      };
       create_web_order: {
         Args: {
           p_items: PricingItemInput[];
@@ -753,6 +896,8 @@ export type Database = {
       stock_movement_type: StockMovementType;
       stock_transfer_status: StockTransferStatus;
       stock_adjustment_reason: StockAdjustmentReason;
+      sale_exchange_direction: SaleExchangeDirection;
+      sale_settlement_status: SaleSettlementStatus;
     };
   };
 };

@@ -28,7 +28,8 @@ export default async function SalesListPage(props: PageProps<"/ventas">) {
   const doctorId = typeof searchParams.doctor === "string" ? searchParams.doctor : undefined;
   const paymentMethodId = typeof searchParams.payment === "string" ? searchParams.payment : undefined;
   const rawStatus = typeof searchParams.status === "string" ? searchParams.status : undefined;
-  const status = rawStatus === "confirmed" || rawStatus === "cancelled" ? rawStatus : undefined;
+  const status =
+    rawStatus === "confirmed" || rawStatus === "cancelled" || rawStatus === "replaced" ? rawStatus : undefined;
 
   // Columnas explícitas: SalesTable y los mapeos de abajo (locationIds,
   // sellerIds, etc.) solo usan estas 14 — la tabla tiene 26 en total

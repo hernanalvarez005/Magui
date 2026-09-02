@@ -122,6 +122,9 @@ export function SalesTable({ rows }: { rows: Row[] }) {
 
 function SaleStatusBadge({ status }: { status: SaleRow["status"] }) {
   if (status === "cancelled") return <Badge variant="destructive">Cancelada</Badge>;
+  // Reemplazada por un cambio de producto — nunca "Confirmada" (no cuenta en
+  // ninguna métrica activa, y no es ni un borrador ni una anulación).
+  if (status === "replaced") return <Badge variant="outline">Reemplazada</Badge>;
   if (status === "draft") return <Badge variant="secondary">Borrador</Badge>;
   return <Badge variant="success">Confirmada</Badge>;
 }

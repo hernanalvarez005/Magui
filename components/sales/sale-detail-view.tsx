@@ -31,6 +31,10 @@ interface Props {
   cancelledByName?: string;
   movements: StockMovementRow[];
   canCancel: boolean;
+  /** Cambios/Devoluciones: esta venta fue reemplazada por un cambio (status=replaced) -> la operación nueva. */
+  replacedBy?: { id: string; sale_number: string } | null;
+  /** Cambios/Devoluciones: esta venta ES la operación nueva de un cambio -> la venta que reemplaza. */
+  replacesOriginal?: { id: string; sale_number: string } | null;
 }
 
 export function SaleDetailView({
@@ -47,6 +51,8 @@ export function SaleDetailView({
   cancelledByName,
   movements,
   canCancel,
+  replacedBy,
+  replacesOriginal,
 }: Props) {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5 p-4 md:p-6">
@@ -67,6 +73,8 @@ export function SaleDetailView({
             <h1 className="text-xl font-semibold">{sale.sale_number}</h1>
             {sale.status === "cancelled" ? (
               <Badge variant="destructive">Cancelada</Badge>
+            ) : sale.status === "replaced" ? (
+              <Badge variant="outline">Anulada / Reemplazada por cambio</Badge>
             ) : (
               <Badge variant="success">Confirmada</Badge>
             )}
@@ -87,6 +95,26 @@ export function SaleDetailView({
         <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
           {sale.free_sale_notes}
         </p>
+      ) : null}
+
+      {/* Cambios/Devoluciones — vínculo en las dos direcciones (sección 34 del
+          pedido): nunca se edita la venta original, así que esto es la única
+          forma de navegar entre las dos operaciones. */}
+      {replacedBy ? (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted px-3 py-2 text-sm">
+          <span>Esta venta fue reemplazada por un cambio de producto.</span>
+          <Link href={`/ventas/${replacedBy.id}`} className="font-medium text-primary hover:underline">
+            Ver operación nueva ({replacedBy.sale_number})
+          </Link>
+        </div>
+      ) : null}
+      {replacesOriginal ? (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-muted px-3 py-2 text-sm">
+          <span>Esta operación se originó en un cambio de producto.</span>
+          <Link href={`/ventas/${replacesOriginal.id}`} className="font-medium text-primary hover:underline">
+            Ver venta original ({replacesOriginal.sale_number})
+          </Link>
+        </div>
       ) : null}
 
       <Card>
