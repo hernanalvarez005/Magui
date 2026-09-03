@@ -31,6 +31,8 @@ interface BillingRow {
   total: string;
   billing_status: SaleBillingStatus;
   invoiced_at: string | null;
+  /** Devolución de producto: hubo alguna devolución sobre esta venta — si está PENDING, `total` ya es neto. */
+  hasReturn?: boolean;
   customer?: { full_name: string; dni: string | null };
   accountName?: string;
   paymentName?: string;
@@ -131,6 +133,9 @@ export function BillingTable({ rows, showInvoicedColumns }: { rows: BillingRow[]
                 </TableCell>
                 <TableCell className="text-right text-sm font-medium tabular-nums">
                   {formatCurrency(Number(row.total))}
+                  {row.hasReturn && row.billing_status === "PENDING" ? (
+                    <div className="text-[10px] font-normal text-muted-foreground">neto de devolución</div>
+                  ) : null}
                 </TableCell>
                 <TableCell className="text-sm">{row.accountName ?? "—"}</TableCell>
                 <TableCell className="text-sm">{row.paymentName ?? "—"}</TableCell>
@@ -218,6 +223,11 @@ function MarkInvoicedDialog({ row, onClose }: { row: BillingRow; onClose: () => 
             <span className="text-muted-foreground">Importe</span>
             <span className="font-semibold">{formatCurrency(Number(row.total))}</span>
           </div>
+          {row.hasReturn ? (
+            <p className="text-xs text-muted-foreground">
+              Este importe ya descuenta una devolución registrada sobre la venta.
+            </p>
+          ) : null}
         </div>
 
         <DialogFooter>

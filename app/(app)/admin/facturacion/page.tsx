@@ -79,20 +79,29 @@ export default async function BillingPage(props: PageProps<"/admin/facturacion">
       invoicedByIds.length
         ? supabase.from("profiles").select("id, full_name").in("id", invoicedByIds)
         : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),
-      // Detalle de "qué se compró" (sección 1-3 del pedido): sale_items es la
-      // fuente de verdad comercial — un kit vendido queda UNA fila acá (con
-      // su propio product_id de kit), aunque internamente haya descontado
-      // stock de sus componentes por separado (fn_apply_stock_movement).
-      // Nunca se reconstruye mirando movimientos de stock. Solo las 3
-      // columnas que realmente se usan, nunca select("*") (sección 10).
+      // Detalle de "qué se compró" (sección 1-3 del pedido): igual criterio
+      // que sale_items (un kit vendido queda UNA fila, con su propio
+      // product_id de kit — nunca se reconstruye mirando movimientos de
+      // stock), pero leído de sale_item_net en vez del crudo: cantidad e
+      // importe netos de devoluciones (precisión #6 del pedido, cerrada con
+      // el usuario — una venta PENDING no puede seguir mostrando el bruto
+      // original después de una devolución, o se termina facturando de más).
+      // INVOICED nunca se toca acá (el comprobante ya emitido es un hecho
+      // fiscal consumado, ver advertencia en el detalle de la venta) — solo
+      // PENDING usa el neto, más abajo. Solo las columnas que realmente se
+      // usan, nunca select("*") (sección 10).
       saleIds.length
         ? supabase
-            .from("sale_items")
-            .select("sale_id, product_id, quantity")
+            .from("sale_item_net")
+            .select("sale_id, product_id, net_quantity, net_line_total")
             .in("sale_id", saleIds)
-            .order("created_at")
-        : Promise.resolve({ data: [] as { sale_id: string; product_id: string; quantity: string }[] }),
+        : Promise.resolve({ data: [] as { sale_id: string; product_id: string; net_quantity: number; net_line_total: number }[] }),
     ]);
+
+  const netTotalBySale = new Map<string, number>();
+  for (const row of saleItems ?? []) {
+    netTotalBySale.set(row.sale_id, (netTotalBySale.get(row.sale_id) ?? 0) + Number(row.net_line_total));
+  }
 
   // sale_items solo guarda product_id (no un snapshot de nombre) — el
   // nombre se resuelve vía join a products, mismo criterio que ya usa
@@ -107,8 +116,11 @@ export default async function BillingPage(props: PageProps<"/admin/facturacion">
 
   const itemsBySale = new Map<string, { name: string; quantity: number }[]>();
   for (const item of saleItems ?? []) {
+    // Una línea devuelta en su totalidad (net_quantity=0) no queda listada:
+    // no hay nada de ese producto que siga pendiente de facturar.
+    if (Number(item.net_quantity) <= 0) continue;
     const list = itemsBySale.get(item.sale_id) ?? [];
-    list.push({ name: itemProductNameById.get(item.product_id) ?? "Producto eliminado", quantity: Number(item.quantity) });
+    list.push({ name: itemProductNameById.get(item.product_id) ?? "Producto eliminado", quantity: Number(item.net_quantity) });
     itemsBySale.set(item.sale_id, list);
   }
 
@@ -117,14 +129,23 @@ export default async function BillingPage(props: PageProps<"/admin/facturacion">
   const paymentMap = new Map((paymentMethods ?? []).map((p) => [p.id, p.name]));
   const invoicedByMap = new Map((invoicedByProfiles ?? []).map((p) => [p.id, p.full_name]));
 
-  const rows = (sales ?? []).map((s) => ({
-    ...s,
-    customer: s.customer_id ? customerMap.get(s.customer_id) : undefined,
-    accountName: s.payment_account_id ? accountMap.get(s.payment_account_id) : undefined,
-    paymentName: paymentMap.get(s.payment_method_id),
-    invoicedByName: s.invoiced_by ? invoicedByMap.get(s.invoiced_by) : undefined,
-    items: itemsBySale.get(s.id) ?? [],
-  }));
+  const rows = (sales ?? []).map((s) => {
+    const netTotal = netTotalBySale.get(s.id) ?? Number(s.total);
+    const hasReturn = netTotal !== Number(s.total);
+    return {
+      ...s,
+      // Solo PENDING reemplaza el importe mostrado por el neto — INVOICED
+      // sigue mostrando lo que realmente se facturó (matriz PENDING/INVOICED
+      // × parcial/total, cerrada con el usuario).
+      total: s.billing_status === "PENDING" ? String(netTotal) : s.total,
+      hasReturn,
+      customer: s.customer_id ? customerMap.get(s.customer_id) : undefined,
+      accountName: s.payment_account_id ? accountMap.get(s.payment_account_id) : undefined,
+      paymentName: paymentMap.get(s.payment_method_id),
+      invoicedByName: s.invoiced_by ? invoicedByMap.get(s.invoiced_by) : undefined,
+      items: itemsBySale.get(s.id) ?? [],
+    };
+  });
 
   const totalPages = count ? Math.ceil(count / PAGE_SIZE) : 1;
 
