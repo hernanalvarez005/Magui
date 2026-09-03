@@ -77,10 +77,14 @@ interface PromotionOption {
  * Se concentra en: elegir canal/sucursal, buscar y agregar productos.
  * Todo lo demás (cliente, doctora, observaciones, venta sin costo, carga
  * histórica, medio de pago, cuenta/alias, resumen y confirmación) vive
- * dentro de NewSaleCart, que se abre solo automáticamente la PRIMERA vez
- * que se agrega un producto (sección 2/22 del pedido) — de ahí en más la
- * vendedora sigue agregando sin que se le vuelva a interponer, y reabre el
- * carrito cuando quiere con el botón flotante.
+ * dentro de NewSaleCart — el carrito es el checkout.
+ *
+ * Ajuste UX (revisión posterior al rediseño original): el carrito NUNCA se
+ * abre solo, ni siquiera con el primer producto — agregar solo actualiza
+ * cart/cartCount/quote y el botón flotante ("Carrito · N · $X"), sin tocar
+ * cartOpen. El drawer/sheet se abre EXCLUSIVAMENTE por click explícito de la
+ * vendedora en ese botón. Catálogo sin obstrucciones mientras arma el
+ * pedido; abre el carrito recién cuando quiere cerrar la venta.
  *
  * Única fuente de estado (sección 26 del pedido): todo el estado de la
  * operación vive acá, en este componente — NewSaleCart es puramente de
@@ -147,6 +151,9 @@ export function NewSaleClient({
   const [confirming, setConfirming] = useState(false);
   const [receipt, setReceipt] = useState<CreateSaleResult | null>(null);
   const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
+  // Ajuste UX: el carrito NUNCA se abre solo — únicamente por acción
+  // explícita de la vendedora (botón "Ver carrito"/"Carrito"). Agregar
+  // productos actualiza cart/cartCount/quote sin tocar este estado.
   const [cartOpen, setCartOpen] = useState(false);
 
   const selectedChannel = channels.find((c) => c.id === channelId);
@@ -243,20 +250,6 @@ export function NewSaleClient({
   );
   const cartCount = cartItems.reduce((acc, i) => acc + i.quantity, 0);
 
-  // Apertura automática del carrito: SOLO en la transición de carrito vacío
-  // a con productos (sección 2/22 del pedido) — nunca se vuelve a forzar en
-  // cada producto siguiente, para no interrumpir mientras se sigue armando
-  // la venta. Si la vendedora vacía el carrito del todo y vuelve a agregar,
-  // se considera un "primer producto" nuevo y reabre — comportamiento
-  // consistente, no un caso especial.
-  const prevCartCountRef = useRef(0);
-  useEffect(() => {
-    if (prevCartCountRef.current === 0 && cartCount > 0) {
-      setCartOpen(true);
-    }
-    prevCartCountRef.current = cartCount;
-  }, [cartCount]);
-
   // Recalcula el precio en el servidor (RPC de solo lectura) cada vez que cambia el carrito
   // o el medio de pago. Esto es una ESTIMACIÓN: create_sale() vuelve a calcular todo al confirmar.
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -291,6 +284,16 @@ export function NewSaleClient({
   }, [JSON.stringify(cartItems), paymentMethodId, isFreeSale]);
 
   function setQuantity(productId: string, quantity: number) {
+    // Feedback breve (sección 8 del pedido "no abrir carrito automáticamente")
+    // — SOLO en la transición 0 -> N de ESE producto puntual (recién entra al
+    // carrito), nunca en cada click de +/- posterior: evita un toast por cada
+    // unidad al ir subiendo la cantidad desde la card.
+    const wasEmpty = !cart[productId];
+    if (wasEmpty && quantity > 0) {
+      const product = products.find((p) => p.id === productId);
+      toast.success(product ? `${product.name} agregado al carrito` : "Agregado al carrito", { duration: 1500 });
+    }
+
     setCart((prev) => {
       const next = { ...prev };
       if (quantity <= 0) {
@@ -418,7 +421,6 @@ export function NewSaleClient({
     setHistoricalSoldAt("");
     setSkipStockMovement(false);
     setManualPrices({});
-    prevCartCountRef.current = 0;
   }
 
   if (receipt) {
