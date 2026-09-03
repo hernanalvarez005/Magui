@@ -24,9 +24,12 @@ export interface PricingCondition {
   id: string;
   code: string;
   name: string;
-  rule_type: "BASE" | "PAYMENT_METHOD" | "QUANTITY";
+  // 'QUANTITY' migró a Promociones (tipo QUANTITY_DISCOUNT en fn_apply_promotions,
+  // sin espejo en este archivo — igual que 3x2/duo%/kit%, que tampoco lo tienen).
+  // Este mirror deliberadamente ya no modela esa rama: fn_pricing_quote real
+  // tampoco la resuelve más (ver 20260201000045_quantity_discount_pricing_quote.sql).
+  rule_type: "BASE" | "PAYMENT_METHOD";
   payment_method_id: string | null;
-  min_units: number | null;
   discount_percent: number | null;
   priority: number;
   active: boolean;
@@ -103,17 +106,11 @@ export function quoteSale(
     }
   }
 
-  const totalQty = items.reduce((acc, item) => {
-    const product = productsById.get(item.product_id)!;
-    return product.promo_eligible ? acc + item.quantity : acc;
-  }, 0);
-
   const winningCondition = catalog.conditions
     .filter((c) => c.active)
     .filter((c) => {
       if (c.rule_type === "BASE") return true;
       if (c.rule_type === "PAYMENT_METHOD") return c.payment_method_id === paymentMethodId;
-      if (c.rule_type === "QUANTITY") return c.min_units !== null && totalQty >= c.min_units;
       return false;
     })
     .sort((a, b) => a.priority - b.priority)[0];

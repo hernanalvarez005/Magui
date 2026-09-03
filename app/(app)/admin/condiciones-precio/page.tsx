@@ -9,9 +9,14 @@ export default async function AdminPriceConditionsPage() {
   const supabase = await createClient();
 
   const [{ data: conditions }, { data: paymentMethods }] = await Promise.all([
+    // rule_type=QUANTITY dejó de ser una condición de precio administrable
+    // acá — migró a Promociones (tipo QUANTITY_DISCOUNT). Las filas legacy
+    // (QTY_2/QTY_3_PLUS) siguen existiendo, desactivadas, únicamente para no
+    // romper la integridad de sale_items históricos — nunca se muestran acá.
     supabase
       .from("price_conditions")
       .select("id, code, name, rule_type, payment_method_id, min_units, discount_percent, priority, combinable, active")
+      .neq("rule_type", "QUANTITY")
       .order("priority"),
     supabase.from("payment_methods").select("id, name"),
   ]);

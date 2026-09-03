@@ -66,9 +66,10 @@ interface ProductOption {
 interface PromotionOption {
   id: string;
   name: string;
-  type: "THREE_FOR_TWO" | "DUO_PERCENT" | "KIT_PERCENT";
+  type: "THREE_FOR_TWO" | "DUO_PERCENT" | "KIT_PERCENT" | "QUANTITY_DISCOUNT";
   discount_percent: string | null;
   group_size: number;
+  minimum_quantity: number | null;
 }
 
 /**

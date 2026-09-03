@@ -33,6 +33,7 @@ interface Promotion {
   price_condition_id: string;
   discount_percent: string | null;
   group_size: number;
+  minimum_quantity: number | null;
   priority: number;
   stackable: boolean;
   active: boolean;
@@ -51,6 +52,7 @@ const TYPE_BADGE: Record<PromotionType, string> = {
   THREE_FOR_TWO: "3x2",
   DUO_PERCENT: "Duo %",
   KIT_PERCENT: "Kit %",
+  QUANTITY_DISCOUNT: "Cantidad %",
 };
 
 type PromoLifecycle = "programada" | "activa" | "finalizada" | "desactivada";
@@ -154,6 +156,7 @@ export function PromotionsTable({
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {p.code}
+                      {p.type === "QUANTITY_DISCOUNT" ? ` · ${p.minimum_quantity}+ unidades` : ""}
                       {p.discount_percent ? ` · ${Math.round(Number(p.discount_percent) * 100)}% OFF` : ""}
                       {p.type === "THREE_FOR_TWO" ? ` · cada ${p.group_size}, 1 gratis` : ""}
                     </p>

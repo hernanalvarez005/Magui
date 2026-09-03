@@ -13,7 +13,7 @@ export default async function AdminPromotionsPage() {
       supabase
         .from("promotions")
         .select(
-          "id, code, name, type, price_condition_id, discount_percent, group_size, priority, stackable, active, valid_from, valid_until, notes"
+          "id, code, name, type, price_condition_id, discount_percent, group_size, minimum_quantity, priority, stackable, active, valid_from, valid_until, notes"
         )
         .order("priority"),
       supabase.from("promotion_products").select("promotion_id, product_id"),

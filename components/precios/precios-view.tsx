@@ -34,6 +34,7 @@ interface PromotionLite {
   price_condition_id: string;
   discount_percent: string | null;
   group_size: number;
+  minimum_quantity: number | null;
   valid_from: string;
   valid_until: string | null;
 }
@@ -57,7 +58,13 @@ const PROMO_TYPE_LABEL: Record<PromotionType, string> = {
   THREE_FOR_TWO: "3x2",
   DUO_PERCENT: "Dúo %",
   KIT_PERCENT: "% OFF",
+  QUANTITY_DISCOUNT: "Descuento por cantidad",
 };
+
+/** "2+ → 20% OFF" (sección 6/17 del pedido) — nunca "N% OFF" a secas para este tipo. */
+function quantityBadge(promo: { minimum_quantity: number | null; discount_percent: string | null }) {
+  return `${promo.minimum_quantity}+ → ${pct(promo.discount_percent)} OFF`;
+}
 
 function pct(discount: string | null) {
   return discount ? `${Math.round(Number(discount) * 100)}%` : "";
@@ -99,6 +106,14 @@ function buildPromoInfo(promo: PromotionLite, product: ProductLite, participants
       badge: `Dúo ${discountPct} OFF`,
       priceLine: `Precio promo: ${promoAmountLabel}${partner ? ` (al comprar junto con ${partner.name})` : ""}`,
       extraLine: null,
+    };
+  }
+
+  if (promo.type === "QUANTITY_DISCOUNT") {
+    return {
+      badge: quantityBadge(promo),
+      priceLine: `Precio con la promo: ${promoAmountLabel} por unidad`,
+      extraLine: `Aplica al llevar ${promo.minimum_quantity} o más unidades entre los productos participantes: ${participants.map((p) => p.name).join(", ")}.`,
     };
   }
 
@@ -200,7 +215,12 @@ export function PreciosView({
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {promotions.map((promo) => {
               const participants = participantsByPromotion.get(promo.id) ?? [];
-              const benefit = promo.type === "THREE_FOR_TWO" ? "3x2" : `${pct(promo.discount_percent)} OFF`;
+              const benefit =
+                promo.type === "THREE_FOR_TWO"
+                  ? "3x2"
+                  : promo.type === "QUANTITY_DISCOUNT"
+                    ? quantityBadge(promo)
+                    : `${pct(promo.discount_percent)} OFF`;
               return (
                 // Misma jerarquía que la card de Home (badge -> nombre ->
                 // participantes), cada uno en su propio renglón para que un

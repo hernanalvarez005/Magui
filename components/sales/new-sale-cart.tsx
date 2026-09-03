@@ -49,9 +49,10 @@ interface ProductOption {
 interface PromotionOption {
   id: string;
   name: string;
-  type: "THREE_FOR_TWO" | "DUO_PERCENT" | "KIT_PERCENT";
+  type: "THREE_FOR_TWO" | "DUO_PERCENT" | "KIT_PERCENT" | "QUANTITY_DISCOUNT";
   discount_percent: string | null;
   group_size: number;
+  minimum_quantity: number | null;
 }
 interface PaymentMethodOption {
   id: string;
@@ -80,10 +81,11 @@ const FREE_SALE_REASONS: { value: FreeSaleReason; label: string }[] = [
   { value: "OTHER", label: "Otro" },
 ];
 
-/** "Promoción aplicada: 20% OFF" / "Promoción aplicada: 3x2" — sección 15 del pedido. */
+/** "Promoción aplicada: 20% OFF" / "Promoción aplicada: 3x2" / "Promoción aplicada: 2+ → 20% OFF". */
 function promoLabel(p: PromotionOption): string {
   if (p.type === "THREE_FOR_TWO") return `Promoción aplicada: 3x${p.group_size - 1}`;
   const pct = p.discount_percent ? Math.round(Number(p.discount_percent) * 100) : 0;
+  if (p.type === "QUANTITY_DISCOUNT") return `Promoción aplicada: ${p.minimum_quantity}+ → ${pct}% OFF`;
   return `Promoción aplicada: ${pct}% OFF`;
 }
 

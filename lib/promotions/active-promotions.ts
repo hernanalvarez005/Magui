@@ -15,7 +15,9 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 export function activePromotionsQuery(supabase: SupabaseServerClient, nowIso: string = new Date().toISOString()) {
   return supabase
     .from("promotions")
-    .select("id, code, name, type, price_condition_id, discount_percent, group_size, valid_from, valid_until")
+    .select(
+      "id, code, name, type, price_condition_id, discount_percent, group_size, minimum_quantity, valid_from, valid_until"
+    )
     .eq("active", true)
     .lte("valid_from", nowIso)
     .or(`valid_until.is.null,valid_until.gt.${nowIso}`);

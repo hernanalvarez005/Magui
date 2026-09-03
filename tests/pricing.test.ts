@@ -32,7 +32,14 @@ describe("pricing-engine — motor de precios", () => {
     if (result.ok) expect(result.total).toBe(45300);
   });
 
-  it("Caso 4: 2 productos aplica QTY_2 (20% OFF), no el medio de pago", () => {
+  // Casos 4-6 (sección 41 original) probaban rule_type='QUANTITY' escalando
+  // la condición de TODO el carrito por cantidad — esa lógica migró
+  // enteramente a Promociones (tipo QUANTITY_DISCOUNT, evaluado en
+  // fn_apply_promotions/pgTAP, sin espejo acá — igual que 3x2/duo%/kit%,
+  // que nunca lo tuvieron). Quedan como regresión: un carrito de 2 o 3
+  // productos SIGUE resolviendo por medio de pago, nunca por cantidad
+  // (ajuste "Condiciones de precio por cantidad -> Promociones").
+  it("Caso 4: 2 productos + Transferencia resuelve por MEDIO DE PAGO, nunca por cantidad", () => {
     const catalog = buildTestCatalog();
     const result = quoteSale(
       catalog,
@@ -44,12 +51,12 @@ describe("pricing-engine — motor de precios", () => {
     );
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.applied_price_condition_code).toBe("QTY_2");
-      expect(result.total).toBe(36240 + 34000);
+      expect(result.applied_price_condition_code).toBe("TRANSFER");
+      expect(result.total).toBe(40770 + 38250);
     }
   });
 
-  it("Caso 5: 3 productos aplica QTY_3_PLUS (25% OFF)", () => {
+  it("Caso 5: 3 productos + Transferencia sigue resolviendo TRANSFER (nunca escala por cantidad)", () => {
     const catalog = buildTestCatalog();
     const result = quoteSale(
       catalog,
@@ -61,10 +68,10 @@ describe("pricing-engine — motor de precios", () => {
       PAYMENT_METHOD.TRANSFER
     );
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.applied_price_condition_code).toBe("QTY_3_PLUS");
+    if (result.ok) expect(result.applied_price_condition_code).toBe("TRANSFER");
   });
 
-  it("Caso 6: 3 productos + transferencia aplica SOLO QTY_3_PLUS (no acumula descuentos)", () => {
+  it("Caso 6: 3 productos + Efectivo resuelve CASH, no una condición por cantidad", () => {
     const catalog = buildTestCatalog();
     const result = quoteSale(
       catalog,
@@ -73,12 +80,12 @@ describe("pricing-engine — motor de precios", () => {
         { product_id: PRODUCT.NIAC, quantity: 1 },
         { product_id: PRODUCT.OJOS, quantity: 1 },
       ],
-      PAYMENT_METHOD.TRANSFER
+      PAYMENT_METHOD.CASH
     );
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.applied_price_condition_code).toBe("QTY_3_PLUS");
-      expect(result.total).toBe(33975 + 31875 + 30750);
+      expect(result.applied_price_condition_code).toBe("CASH");
+      expect(result.total).toBe(38500 + 36100 + 34850);
     }
   });
 

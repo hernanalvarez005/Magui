@@ -43,6 +43,7 @@ export interface EditablePromotion {
   price_condition_id: string;
   discount_percent: string | null;
   group_size: number;
+  minimum_quantity: number | null;
   priority: number;
   stackable: boolean;
   valid_from: string;
@@ -60,6 +61,7 @@ const TYPE_LABELS: Record<PromotionType, string> = {
   THREE_FOR_TWO: "3x2 (la más barata gratis)",
   DUO_PERCENT: "Duo — % en un par de productos",
   KIT_PERCENT: "% de descuento en uno o varios productos/kits",
+  QUANTITY_DISCOUNT: "Descuento por cantidad",
 };
 
 const GROUP_LABELS: Record<string, string> = {
@@ -100,6 +102,7 @@ export function PromotionFormDialog({
     priceConditionId: promotion?.price_condition_id ?? priceConditions[0]?.id ?? "",
     discountPercent: promotion?.discount_percent ? String(Number(promotion.discount_percent) * 100) : "",
     groupSize: promotion?.group_size ?? 3,
+    minimumQuantity: promotion?.minimum_quantity ?? 2,
     priority: promotion?.priority ?? 100,
     stackable: promotion?.stackable ?? false,
     validFrom: toDateInput(promotion?.valid_from ?? null) || todayInBuenosAires(),
@@ -132,6 +135,7 @@ export function PromotionFormDialog({
       price_condition_id: form.priceConditionId,
       discount_percent: form.type === "THREE_FOR_TWO" ? null : Number(form.discountPercent) / 100,
       group_size: Number(form.groupSize),
+      minimum_quantity: form.type === "QUANTITY_DISCOUNT" ? Number(form.minimumQuantity) : null,
       priority: Number(form.priority),
       stackable: form.stackable,
       valid_from: form.validFrom,
@@ -152,6 +156,7 @@ export function PromotionFormDialog({
       price_condition_id: parsed.data.price_condition_id,
       discount_percent: parsed.data.discount_percent === null ? null : String(parsed.data.discount_percent),
       group_size: parsed.data.group_size,
+      minimum_quantity: parsed.data.minimum_quantity,
       priority: parsed.data.priority,
       stackable: parsed.data.stackable,
       valid_from: `${parsed.data.valid_from}T00:00:00-03:00`,
@@ -231,6 +236,7 @@ export function PromotionFormDialog({
                   <SelectItem value="THREE_FOR_TWO">{TYPE_LABELS.THREE_FOR_TWO}</SelectItem>
                   <SelectItem value="DUO_PERCENT">{TYPE_LABELS.DUO_PERCENT}</SelectItem>
                   <SelectItem value="KIT_PERCENT">{TYPE_LABELS.KIT_PERCENT}</SelectItem>
+                  <SelectItem value="QUANTITY_DISCOUNT">{TYPE_LABELS.QUANTITY_DISCOUNT}</SelectItem>
                 </SelectContent>
               </Select>
             )}
@@ -292,17 +298,36 @@ export function PromotionFormDialog({
               />
             </div>
           ) : (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="promo-discount">% de descuento</Label>
-              <Input
-                id="promo-discount"
-                type="number"
-                min={1}
-                max={90}
-                value={form.discountPercent}
-                onChange={(e) => setForm((f) => ({ ...f, discountPercent: e.target.value }))}
-              />
-            </div>
+            <>
+              {form.type === "QUANTITY_DISCOUNT" ? (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="promo-min-qty">Cantidad mínima</Label>
+                  <Input
+                    id="promo-min-qty"
+                    type="number"
+                    min={1}
+                    value={form.minimumQuantity}
+                    onChange={(e) => setForm((f) => ({ ...f, minimumQuantity: Number(e.target.value) }))}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Se cuentan unidades entre los productos participantes (no SKUs distintos) — ej. 2 unidades
+                    del mismo producto también alcanzan el mínimo. Un producto fuera de esta promoción nunca
+                    ayuda a alcanzarlo.
+                  </p>
+                </div>
+              ) : null}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="promo-discount">% de descuento</Label>
+                <Input
+                  id="promo-discount"
+                  type="number"
+                  min={1}
+                  max={90}
+                  value={form.discountPercent}
+                  onChange={(e) => setForm((f) => ({ ...f, discountPercent: e.target.value }))}
+                />
+              </div>
+            </>
           )}
 
           <div className="grid grid-cols-2 gap-3">

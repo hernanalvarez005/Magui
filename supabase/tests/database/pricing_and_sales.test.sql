@@ -43,7 +43,10 @@ select is(
   'Caso 3: Vitamina C + 3 cuotas = precio lista 45.300'
 );
 
--- Caso 6: 3 productos + transferencia -> aplica SOLO QTY_3_PLUS (no acumula)
+-- Caso 6 (ajuste "Condiciones de precio por cantidad -> Promociones"): 3
+-- productos + transferencia resuelve la condición por MEDIO DE PAGO — nunca
+-- una condición QUANTITY (esa lógica migró a Promociones, tipo
+-- QUANTITY_DISCOUNT, evaluada aparte en fn_apply_promotions).
 select is(
   quote_sale(
     jsonb_build_array(
@@ -53,8 +56,8 @@ select is(
     ),
     (select id from payment_methods where code = 'TRANSFER')
   ) ->> 'applied_price_condition_code',
-  'QTY_3_PLUS',
-  'Caso 6: 3 productos + transferencia aplica únicamente QTY_3_PLUS'
+  'TRANSFER',
+  'Caso 6: 3 productos + transferencia sigue resolviendo TRANSFER, nunca una condición por cantidad'
 );
 
 -- Caso 7: ACC-NEC bajo una condición sin precio configurado -> rechazar

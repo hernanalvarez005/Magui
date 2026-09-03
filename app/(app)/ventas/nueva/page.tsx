@@ -57,7 +57,10 @@ export default async function NewSalePage() {
     // Solo para mostrar el texto ("Promoción aplicada: 20% OFF" / "3x2") en el
     // carrito — la elegibilidad real (vigencia, exclusividad) la resuelve
     // siempre el servidor en quote_sale/create_sale, nunca el frontend.
-    supabase.from("promotions").select("id, name, type, discount_percent, group_size").eq("active", true),
+    supabase
+      .from("promotions")
+      .select("id, name, type, discount_percent, group_size, minimum_quantity")
+      .eq("active", true),
   ]);
 
   if (!locations || locations.length === 0) {

@@ -5,7 +5,10 @@ import { PriceMatrix } from "@/components/admin/price-matrix";
 
 export const metadata: Metadata = { title: "Precios" };
 
-const CONDITION_ORDER = ["LIST", "TRANSFER", "CASH", "INSTALLMENTS_3", "QTY_2", "QTY_3_PLUS"];
+// QTY_2/QTY_3_PLUS ya no aparecen acá: la query de abajo solo trae condiciones
+// active=true, y esas dos quedaron desactivadas (migraron a Promociones,
+// tipo QUANTITY_DISCOUNT — ver 20260201000046_quantity_discount_deactivate_legacy.sql).
+const CONDITION_ORDER = ["LIST", "TRANSFER", "CASH", "INSTALLMENTS_3"];
 
 export default async function AdminPricesPage() {
   const supabase = await createClient();

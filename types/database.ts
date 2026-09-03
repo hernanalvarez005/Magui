@@ -27,7 +27,7 @@ export type StockAdjustmentReason =
   | "RETURN"
   | "OTHER";
 export type FreeSaleReason = "GIFT" | "SAMPLE" | "EXCHANGE" | "COURTESY" | "OTHER";
-export type PromotionType = "THREE_FOR_TWO" | "DUO_PERCENT" | "KIT_PERCENT";
+export type PromotionType = "THREE_FOR_TWO" | "DUO_PERCENT" | "KIT_PERCENT" | "QUANTITY_DISCOUNT";
 export type SaleRefundMethod = "CASH" | "TRANSFER";
 
 // ---------------------------------------------------------------------------
@@ -248,6 +248,9 @@ export type PromotionRow = {
   price_condition_id: string;
   discount_percent: string | null;
   group_size: number;
+  // Exclusivo de QUANTITY_DISCOUNT: cantidad mínima de UNIDADES participantes
+  // (suma de cantidades, nunca SKUs distintos) para activar discount_percent.
+  minimum_quantity: number | null;
   priority: number;
   stackable: boolean;
   active: boolean;

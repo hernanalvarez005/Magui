@@ -1,0 +1,14 @@
+-- =============================================================================
+-- Maguirejuve · 46 · Condiciones QUANTITY -> Promociones — nuevo tipo (paso 1/5)
+-- =============================================================================
+-- Mismo motivo/patrón que todos los ALTER TYPE ... ADD VALUE anteriores de
+-- este proyecto (sale_status +'replaced'/+'returned', etc.): no puede
+-- usarse en la misma transacción en la que se agrega — este archivo va SOLO.
+--
+-- PASO 0 (auditoría entregada y aprobada por el usuario): "2 productos o
+-- más" / "3 productos o más" NUNCA fueron condiciones de precio permanentes
+-- ligadas al medio de pago — son promociones por cantidad, y por diseño
+-- (fn_pricing_quote) hoy tienen MÁS prioridad que el medio de pago elegido,
+-- lo cual es conceptualmente el problema que este bloque corrige. El resto
+-- de esta migración (pasos 2-5) vive en los archivos siguientes.
+alter type public.promotion_type add value 'QUANTITY_DISCOUNT';

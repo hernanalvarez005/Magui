@@ -3,7 +3,7 @@ import { z } from "zod";
 // Alta/edición de promociones en /admin/promociones. La composición
 // (product_ids) se guarda aparte, vía la RPC set_promotion_products —
 // acá solo se valida la forma antes de mandarla.
-export const promotionTypeSchema = z.enum(["THREE_FOR_TWO", "DUO_PERCENT", "KIT_PERCENT"]);
+export const promotionTypeSchema = z.enum(["THREE_FOR_TWO", "DUO_PERCENT", "KIT_PERCENT", "QUANTITY_DISCOUNT"]);
 
 export const promotionSchema = z
   .object({
@@ -18,6 +18,10 @@ export const promotionSchema = z
     price_condition_id: z.string().uuid("Elegí la condición de precio base."),
     discount_percent: z.number().min(0.01).max(0.9).nullable(),
     group_size: z.number().int().min(2).max(20),
+    // Exclusivo de QUANTITY_DISCOUNT: cantidad mínima de UNIDADES
+    // participantes (sección 4 del pedido "QUANTITY -> Promociones") — nunca
+    // hardcodeada a 2/3, completamente editable.
+    minimum_quantity: z.number().int().min(1).nullable(),
     priority: z.number().int().min(1).max(999),
     stackable: z.boolean(),
     valid_from: z.string().min(1, "Elegí una fecha de inicio."),
@@ -44,10 +48,22 @@ export const promotionSchema = z
           ctx.addIssue({ code: "custom", message: "Elegí exactamente 2 productos.", path: ["product_ids"] });
         }
       } else {
-        // KIT_PERCENT: uno o varios productos/kits — cada uno recibe el mismo % de forma independiente.
+        // KIT_PERCENT/QUANTITY_DISCOUNT: uno o varios productos/kits — cada
+        // uno participa de forma independiente (para QUANTITY_DISCOUNT, la
+        // cantidad mínima se evalúa sobre la SUMA de todos ellos).
         if (data.product_ids.length < 1) {
           ctx.addIssue({ code: "custom", message: "Elegí al menos un producto o kit.", path: ["product_ids"] });
         }
+      }
+      if (data.type === "QUANTITY_DISCOUNT" && data.minimum_quantity === null) {
+        ctx.addIssue({ code: "custom", message: "Ingresá la cantidad mínima.", path: ["minimum_quantity"] });
+      }
+      if (data.type !== "QUANTITY_DISCOUNT" && data.minimum_quantity !== null) {
+        ctx.addIssue({
+          code: "custom",
+          message: "La cantidad mínima es exclusiva de Descuento por cantidad.",
+          path: ["minimum_quantity"],
+        });
       }
     }
     if (data.valid_until && data.valid_until <= data.valid_from) {

@@ -9,10 +9,18 @@ interface PromotionLite {
   name: string;
   type: PromotionType;
   discount_percent: string | null;
+  minimum_quantity: number | null;
 }
 
 function pct(discount: string | null) {
   return discount ? `${Math.round(Number(discount) * 100)}%` : "";
+}
+
+/** "2+ → 20% OFF" — nunca "N% OFF" a secas para este tipo (sección 6/17 del pedido). */
+function benefitLabel(promo: PromotionLite) {
+  if (promo.type === "THREE_FOR_TWO") return "3x2";
+  if (promo.type === "QUANTITY_DISCOUNT") return `${promo.minimum_quantity}+ → ${pct(promo.discount_percent)} OFF`;
+  return `${pct(promo.discount_percent)} OFF`;
 }
 
 /**
@@ -52,7 +60,7 @@ export function ActivePromotionsStrip({
       <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 md:mx-0 md:flex-wrap md:px-0">
         {promotions.map((promo) => {
           const participants = participantsByPromotion.get(promo.id) ?? [];
-          const benefit = promo.type === "THREE_FOR_TWO" ? "3x2" : `${pct(promo.discount_percent)} OFF`;
+          const benefit = benefitLabel(promo);
           const names = participants.map((p) => p.name).join(", ") || "—";
           return (
             <Link
