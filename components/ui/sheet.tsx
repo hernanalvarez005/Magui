@@ -48,13 +48,22 @@ function SheetContent({
   side = "bottom",
   className,
   children,
+  // Nueva Venta: en desktop, el carrito se abre como panel lateral NO modal
+  // (ver new-sale-cart.tsx) — sin overlay, para que el catálogo de fondo
+  // siga siendo clickeable con el carrito abierto. En el resto de los usos
+  // (todos modales) queda en true por default, comportamiento idéntico al
+  // de siempre.
+  showOverlay = true,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content> & VariantProps<typeof sheetVariants>) {
+}: React.ComponentProps<typeof DialogPrimitive.Content> &
+  VariantProps<typeof sheetVariants> & { showOverlay?: boolean }) {
   return (
     <SheetPortal>
-      <SheetOverlay />
+      {showOverlay ? <SheetOverlay /> : null}
       <DialogPrimitive.Content className={cn(sheetVariants({ side }), className)} {...props}>
-        <div className="mx-auto mb-2 h-1.5 w-12 shrink-0 rounded-full bg-muted sm:hidden" />
+        {/* El handle de swipe solo tiene sentido en una sheet que sale desde
+            abajo — en side="right" (drawer lateral) se omite. */}
+        {side === "bottom" ? <div className="mx-auto mb-2 h-1.5 w-12 shrink-0 rounded-full bg-muted sm:hidden" /> : null}
         {children}
         <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring">
           <X className="size-4" />

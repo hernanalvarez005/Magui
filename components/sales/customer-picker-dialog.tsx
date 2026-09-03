@@ -26,14 +26,27 @@ export interface CustomerOption {
   whatsapp: string | null;
 }
 
-export function CustomerPickerDialog({
-  open,
-  onOpenChange,
+/**
+ * Flujo de selección/alta de cliente (DNI -> autocompletar / crear, o
+ * buscar por nombre) — sin ningún wrapper de modal. Se monta/desmonta desde
+ * afuera (el padre decide cuándo mostrarlo); cada montaje arranca con
+ * estado limpio, así que no hace falta un prop `open` acá adentro para
+ * resetear campos.
+ *
+ * Dos consumidores: `CustomerPickerDialog` (abajo, lo envuelve en un Dialog
+ * modal) y el bloque "Cliente" del carrito de Nueva Venta
+ * (new-sale-cart.tsx), que lo muestra inline dentro de la misma sheet —
+ * sección 5 del pedido de rediseño: "no sacar al usuario del carrito".
+ */
+export function CustomerPickerFields({
   onSelect,
+  footer,
+  autoFocus = true,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSelect: (customer: CustomerOption | null) => void;
+  onSelect: (customer: CustomerOption) => void;
+  /** Acción secundaria opcional (ej. "Cancelar" inline, o "Venta sin identificar cliente" en el modal). */
+  footer?: React.ReactNode;
+  autoFocus?: boolean;
 }) {
   // Flujo principal: DNI primero, con autobúsqueda debounced. Si aparece un
   // cliente, se ofrece autocompletar ("Cliente encontrado"). Si no, solo se
@@ -50,21 +63,6 @@ export function CustomerPickerDialog({
 
   const [form, setForm] = useState({ full_name: "", whatsapp: "" });
   const [isPending, startTransition] = useTransition();
-
-  useEffect(() => {
-    if (!open) {
-      // Reset al cerrar, para que la próxima apertura arranque limpia.
-      void Promise.resolve().then(() => {
-        setDni("");
-        setDniStatus("idle");
-        setFound(null);
-        setNameSearchMode(false);
-        setQuery("");
-        setResults([]);
-        setForm({ full_name: "", whatsapp: "" });
-      });
-    }
-  }, [open]);
 
   useEffect(() => {
     const normalized = normalizeDni(dni);
@@ -153,159 +151,170 @@ export function CustomerPickerDialog({
       }
 
       onSelect(data);
-      onOpenChange(false);
     });
   }
 
   const normalizedDni = normalizeDni(dni);
   const showCreateForm = dniStatus === "not_found" && normalizedDni.length >= 6;
 
+  if (nameSearchMode) {
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            autoFocus={autoFocus}
+            placeholder="Nombre, DNI o WhatsApp…"
+            className="pl-9"
+            value={query}
+            onChange={(e) => handleSearch(e.target.value)}
+          />
+        </div>
+
+        <div className="flex max-h-64 flex-col gap-1 overflow-y-auto">
+          {searching ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">Buscando…</p>
+          ) : results.length === 0 && query.length >= 2 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">No encontramos clientes que coincidan.</p>
+          ) : (
+            results.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className="flex flex-col rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
+                onClick={() => onSelect(c)}
+              >
+                <span className="font-medium">{c.full_name}</span>
+                <span className="text-xs text-muted-foreground">
+                  {[c.dni, c.whatsapp].filter(Boolean).join(" · ") || "Sin datos adicionales"}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+
+        <Button type="button" variant="outline" onClick={() => setNameSearchMode(false)}>
+          Volver a buscar por DNI
+        </Button>
+        {footer}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="dni-search">DNI</Label>
+        <div className="relative">
+          <Input
+            id="dni-search"
+            autoFocus={autoFocus}
+            inputMode="numeric"
+            placeholder="Ej: 32123456"
+            value={dni}
+            // Sin onPaste ni onKeyDown restrictivos: escribir, pegar
+            // (Ctrl+V/Cmd+V/"Pegar" en mobile) todo pasa por acá. Se
+            // normaliza en el momento (saca puntos/espacios de
+            // "32.123.456" o "32 123 456") para que quede "32123456" sin
+            // que el usuario tenga que editarlo a mano.
+            onChange={(e) => setDni(normalizeDni(e.target.value))}
+          />
+          {dniStatus === "searching" ? (
+            <Loader2 className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+          ) : null}
+        </div>
+      </div>
+
+      {dniStatus === "found" && found ? (
+        <div className="flex flex-col gap-2 rounded-lg border border-emerald-600/30 bg-emerald-600/10 p-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+            <CheckCircle2 className="size-4" /> Cliente encontrado
+          </div>
+          <p className="text-sm">{found.full_name}</p>
+          <p className="text-xs text-muted-foreground">
+            {[found.dni ? `DNI ${found.dni}` : null, found.whatsapp].filter(Boolean).join(" · ")}
+          </p>
+          <Button type="button" onClick={() => onSelect(found)}>
+            Usar este cliente
+          </Button>
+        </div>
+      ) : null}
+
+      {showCreateForm ? (
+        <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
+          <p className="text-sm text-muted-foreground">
+            No encontramos ningún cliente con ese DNI. Cargá los datos para crearlo.
+          </p>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="full_name">Nombre y apellido</Label>
+            <Input
+              id="full_name"
+              value={form.full_name}
+              onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="whatsapp">WhatsApp (opcional)</Label>
+            <Input
+              id="whatsapp"
+              value={form.whatsapp}
+              onChange={(e) => setForm((f) => ({ ...f, whatsapp: e.target.value }))}
+            />
+          </div>
+          <Button type="button" onClick={handleCreate} disabled={isPending}>
+            {isPending ? <Loader2 className="animate-spin" /> : <UserPlus />}
+            Crear y seleccionar
+          </Button>
+        </div>
+      ) : null}
+
+      <Button type="button" variant="outline" onClick={() => setNameSearchMode(true)}>
+        <Search /> Buscar por nombre en vez de DNI
+      </Button>
+      {footer}
+    </div>
+  );
+}
+
+/** Wrapper modal de CustomerPickerFields — se remonta (reset limpio) cada vez que se abre. */
+export function CustomerPickerDialog({
+  open,
+  onOpenChange,
+  onSelect,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSelect: (customer: CustomerOption | null) => void;
+}) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{nameSearchMode ? "Buscar cliente" : "Cliente"}</DialogTitle>
-          <DialogDescription>
-            {nameSearchMode
-              ? "Buscá por nombre, DNI o WhatsApp."
-              : "Escribí el DNI: si el cliente ya existe lo autocompletamos."}
-          </DialogDescription>
+          <DialogTitle>Cliente</DialogTitle>
+          <DialogDescription>Escribí el DNI: si el cliente ya existe lo autocompletamos.</DialogDescription>
         </DialogHeader>
 
-        {nameSearchMode ? (
-          <div className="flex flex-col gap-3">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                autoFocus
-                placeholder="Nombre, DNI o WhatsApp…"
-                className="pl-9"
-                value={query}
-                onChange={(e) => handleSearch(e.target.value)}
-              />
-            </div>
-
-            <div className="flex max-h-64 flex-col gap-1 overflow-y-auto">
-              {searching ? (
-                <p className="py-4 text-center text-sm text-muted-foreground">Buscando…</p>
-              ) : results.length === 0 && query.length >= 2 ? (
-                <p className="py-4 text-center text-sm text-muted-foreground">
-                  No encontramos clientes que coincidan.
-                </p>
-              ) : (
-                results.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className="flex flex-col rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
-                    onClick={() => {
-                      onSelect(c);
-                      onOpenChange(false);
-                    }}
-                  >
-                    <span className="font-medium">{c.full_name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {[c.dni, c.whatsapp].filter(Boolean).join(" · ") || "Sin datos adicionales"}
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
-
-            <Button type="button" variant="outline" onClick={() => setNameSearchMode(false)}>
-              Volver a buscar por DNI
-            </Button>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="dni-search">DNI</Label>
-              <div className="relative">
-                <Input
-                  id="dni-search"
-                  autoFocus
-                  inputMode="numeric"
-                  placeholder="Ej: 32123456"
-                  value={dni}
-                  // Sin onPaste ni onKeyDown restrictivos: escribir, pegar
-                  // (Ctrl+V/Cmd+V/"Pegar" en mobile) todo pasa por acá. Se
-                  // normaliza en el momento (saca puntos/espacios de
-                  // "32.123.456" o "32 123 456") para que quede
-                  // "32123456" sin que el usuario tenga que editarlo a mano.
-                  onChange={(e) => setDni(normalizeDni(e.target.value))}
-                />
-                {dniStatus === "searching" ? (
-                  <Loader2 className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
-                ) : null}
-              </div>
-            </div>
-
-            {dniStatus === "found" && found ? (
-              <div className="flex flex-col gap-2 rounded-lg border border-emerald-600/30 bg-emerald-600/10 p-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
-                  <CheckCircle2 className="size-4" /> Cliente encontrado
-                </div>
-                <p className="text-sm">{found.full_name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {[found.dni ? `DNI ${found.dni}` : null, found.whatsapp].filter(Boolean).join(" · ")}
-                </p>
+        {open ? (
+          <CustomerPickerFields
+            onSelect={(c) => {
+              onSelect(c);
+              onOpenChange(false);
+            }}
+            footer={
+              <DialogFooter>
                 <Button
-                  type="button"
+                  variant="ghost"
                   onClick={() => {
-                    onSelect(found);
+                    onSelect(null);
                     onOpenChange(false);
                   }}
                 >
-                  Usar este cliente
+                  Venta sin identificar cliente
                 </Button>
-              </div>
-            ) : null}
-
-            {showCreateForm ? (
-              <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
-                <p className="text-sm text-muted-foreground">
-                  No encontramos ningún cliente con ese DNI. Cargá los datos para crearlo.
-                </p>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="full_name">Nombre y apellido</Label>
-                  <Input
-                    id="full_name"
-                    value={form.full_name}
-                    onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="whatsapp">WhatsApp (opcional)</Label>
-                  <Input
-                    id="whatsapp"
-                    value={form.whatsapp}
-                    onChange={(e) => setForm((f) => ({ ...f, whatsapp: e.target.value }))}
-                  />
-                </div>
-                <Button type="button" onClick={handleCreate} disabled={isPending}>
-                  {isPending ? <Loader2 className="animate-spin" /> : <UserPlus />}
-                  Crear y seleccionar
-                </Button>
-              </div>
-            ) : null}
-
-            <Button type="button" variant="outline" onClick={() => setNameSearchMode(true)}>
-              <Search /> Buscar por nombre en vez de DNI
-            </Button>
-          </div>
-        )}
-
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              onSelect(null);
-              onOpenChange(false);
-            }}
-          >
-            Venta sin identificar cliente
-          </Button>
-        </DialogFooter>
+              </DialogFooter>
+            }
+          />
+        ) : null}
       </DialogContent>
     </Dialog>
   );
