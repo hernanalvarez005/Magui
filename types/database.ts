@@ -236,6 +236,16 @@ export type SaleItemRow = {
   // parcial), apunta al sale_item RAÍZ que generó el movimiento de stock
   // real — resolver siempre con physical_source_sale_item_id ?? id.
   physical_source_sale_item_id: string | null;
+  // Analytics: snapshot de identidad de la promoción al momento de ESTA
+  // venta (nombre/tipo/%/vigencia) — null si la línea no tuvo promoción, o
+  // si es una venta legado anterior a este snapshot (Analytics cae a
+  // promotions vigente en ese caso). Nunca se reescribe si la promoción se
+  // edita después.
+  promotion_name_snapshot: string | null;
+  promotion_type_snapshot: PromotionType | null;
+  promotion_discount_percent_snapshot: string | null;
+  promotion_started_at_snapshot: string | null;
+  promotion_ended_at_snapshot: string | null;
 };
 
 export type PromotionRow = {
@@ -655,6 +665,60 @@ export type DoctorSalesDetail = {
   }[];
 };
 
+// Analytics — Bloque A/B: productos individuales (unidades físicas netas,
+// kits SIEMPRE descompuestos a su composición histórica real vía
+// stock_movements — nunca kit_components vigente) y kits más vendidos
+// (unidades comerciales netas, nunca explotados a componentes).
+export type DashboardProductsBreakdown = {
+  individual_products: {
+    top: { product_id: string; name: string; units: number }[];
+    others_units: number;
+  };
+  top_kits: { product_id: string; name: string; units: number }[];
+};
+
+// Analytics — Bloque C: rendimiento histórico de promociones.
+export type PromotionPerformanceRow = {
+  promotion_id: string;
+  code: string;
+  // Snapshot histórico más reciente del rango si existe (identity_source
+  // = 'snapshot'); si la venta es legado (sin snapshot), cae a promotions
+  // vigente (identity_source = 'legacy_live').
+  name: string;
+  type: PromotionType;
+  discount_percent: string | null;
+  valid_from_snapshot: string | null;
+  valid_until_snapshot: string | null;
+  identity_source: "snapshot" | "legacy_live";
+  is_active: boolean;
+  sales_count: number;
+  units_sold: number;
+  revenue: number;
+  average_ticket: number;
+};
+
+export type PromotionPerformanceReport = { from: string; to: string; rows: PromotionPerformanceRow[] };
+
+export type PromotionPerformanceDetail = {
+  promotion: {
+    id: string;
+    code: string;
+    name: string;
+    type: PromotionType;
+    discount_percent: string | null;
+    group_size: number;
+    minimum_quantity: number | null;
+    active: boolean;
+    valid_from: string;
+    valid_until: string | null;
+    priority: number;
+    stackable: boolean;
+  };
+  metrics: { sales_count: number; units_sold: number; revenue: number; average_ticket: number };
+  top_products: { product_id: string; sku: string; name: string; product_type: ProductType; units: number; revenue: number }[];
+  daily_evolution: { day: string; revenue: number }[];
+};
+
 // ---------------------------------------------------------------------------
 // Shape que espera @supabase/supabase-js. IMPORTANTE: cada tabla se escribe
 // como un literal plano (no vía un tipo genérico compartido tipo `Table<...>`)
@@ -933,6 +997,23 @@ export type Database = {
       doctor_sales_detail: {
         Args: { p_doctor_id: string; p_from: string; p_to: string; p_location_id?: string | null };
         Returns: DoctorSalesDetail;
+      };
+      dashboard_products_breakdown: {
+        Args: {
+          p_from: string;
+          p_to: string;
+          p_location_id?: string | null;
+          p_sales_channel_id?: string | null;
+        };
+        Returns: DashboardProductsBreakdown;
+      };
+      promotion_performance_report: {
+        Args: { p_from: string; p_to: string };
+        Returns: PromotionPerformanceReport;
+      };
+      promotion_performance_detail: {
+        Args: { p_promotion_id: string; p_from: string; p_to: string };
+        Returns: PromotionPerformanceDetail;
       };
       customer_sales_for_exchange: {
         Args: { p_customer_id: string };

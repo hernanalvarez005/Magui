@@ -10,8 +10,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardFilters } from "@/components/dashboard/dashboard-filters";
 import { BarList } from "@/components/dashboard/bar-list";
 import { RevenueByDayChart } from "@/components/dashboard/revenue-by-day-chart";
+import { ProductsDonutChart } from "@/components/dashboard/products-donut-chart";
+import { TopKitsList } from "@/components/dashboard/top-kits-list";
 import { formatCurrency, todayInBuenosAires } from "@/lib/utils";
-import type { DashboardReport } from "@/types/database";
+import type { DashboardProductsBreakdown, DashboardReport } from "@/types/database";
 
 export const metadata: Metadata = { title: "Magui Rejuve" };
 
@@ -37,7 +39,7 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
   const locationId = typeof searchParams.location === "string" ? searchParams.location : null;
   const channelId = typeof searchParams.channel === "string" ? searchParams.channel : null;
 
-  const [{ data: locations }, { data: channels }, { data: report, error }] = await Promise.all([
+  const [{ data: locations }, { data: channels }, { data: report, error }, { data: productsBreakdown }] = await Promise.all([
     supabase
       .from("stock_locations")
       .select("id, name")
@@ -50,9 +52,20 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
       p_location_id: locationId,
       p_sales_channel_id: channelId,
     }),
+    // Bloque A/B de Analytics: mismo rango/sede/canal que dashboard_report,
+    // en su propia RPC (dashboard_products_breakdown) para no sobrecargar
+    // la ya extensa dashboard_report con un cálculo de naturaleza distinta
+    // (físico vía stock_movements, no solo agregación de sale_item_net).
+    supabase.rpc("dashboard_products_breakdown", {
+      p_from: from,
+      p_to: to,
+      p_location_id: locationId,
+      p_sales_channel_id: channelId,
+    }),
   ]);
 
   const data = report as DashboardReport | null;
+  const breakdown = productsBreakdown as DashboardProductsBreakdown | null;
 
   return (
     <div className="flex flex-col gap-5 p-4 md:p-6">
@@ -138,6 +151,35 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
               </CardHeader>
               <CardContent>
                 <BarList items={data.revenue_by_payment_method.map((r) => ({ label: r.payment_method, value: r.revenue }))} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Productos vendidos individualmente</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {breakdown ? (
+                  <ProductsDonutChart
+                    top={breakdown.individual_products.top}
+                    othersUnits={breakdown.individual_products.others_units}
+                  />
+                ) : (
+                  <p className="py-6 text-center text-sm text-muted-foreground">No pudimos cargar este gráfico.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Kits más vendidos</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {breakdown ? (
+                  <TopKitsList items={breakdown.top_kits} />
+                ) : (
+                  <p className="py-6 text-center text-sm text-muted-foreground">No pudimos cargar este ranking.</p>
+                )}
               </CardContent>
             </Card>
 
