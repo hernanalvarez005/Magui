@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Magui Rejuve · Ventas",
+    default: "Magui Rejuve",
     template: "%s · Magui Rejuve",
   },
   description: "Sistema de ventas, precios y stock de Magui Rejuve.",

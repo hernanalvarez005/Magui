@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Copy, KeyRound, Loader2, Plus, Settings2 } from "lucide-react";
+import { KeyRound, Loader2, Plus, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -164,10 +164,7 @@ function EditUserDialog({
   }
   const [locationIds, setLocationIds] = useState<string[]>(user.locationIds);
   const [saving, setSaving] = useState(false);
-  const [resetting, setResetting] = useState(false);
-  const [confirmingReset, setConfirmingReset] = useState(false);
-  const [tempPassword, setTempPassword] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
 
   async function handleSave() {
     setSaving(true);
@@ -215,74 +212,13 @@ function EditUserDialog({
     onSaved();
   }
 
-  async function handleResetPassword() {
-    setResetting(true);
-    const result = await resetUserPasswordAction(user.id);
-    setResetting(false);
-    if (result.error) {
-      toast.error(result.error);
-      return;
-    }
-    setTempPassword(result.tempPassword ?? null);
-  }
-
-  async function copyTempPassword() {
-    if (!tempPassword) return;
-    try {
-      await navigator.clipboard.writeText(tempPassword);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      toast.error("No pudimos copiar. Copiala manualmente.");
-    }
-  }
-
-  if (confirmingReset) {
+  if (changingPassword) {
     return (
-      <Dialog open onOpenChange={(o) => !o && setConfirmingReset(false)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Restablecer contraseña de {user.full_name}</DialogTitle>
-            <DialogDescription>
-              {tempPassword
-                ? "Se generó una contraseña provisoria. Copiala y compartísela por un canal seguro — no queda guardada en ningún lado, esta es la única vez que se muestra."
-                : "Se genera una contraseña provisoria aleatoria y reemplaza la actual. La persona podrá cambiarla después de iniciar sesión."}
-            </DialogDescription>
-          </DialogHeader>
-
-          {tempPassword ? (
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-muted p-3">
-              <code className="flex-1 text-sm font-medium tracking-wide">{tempPassword}</code>
-              <Button type="button" variant="outline" size="icon" onClick={copyTempPassword}>
-                {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-              </Button>
-            </div>
-          ) : null}
-
-          <DialogFooter>
-            {tempPassword ? (
-              <Button
-                onClick={() => {
-                  setConfirmingReset(false);
-                  setTempPassword(null);
-                }}
-              >
-                Listo
-              </Button>
-            ) : (
-              <>
-                <Button variant="ghost" onClick={() => setConfirmingReset(false)}>
-                  Volver
-                </Button>
-                <Button variant="destructive" onClick={handleResetPassword} disabled={resetting}>
-                  {resetting ? <Loader2 className="animate-spin" /> : null}
-                  Generar contraseña nueva
-                </Button>
-              </>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ChangePasswordDialog
+        userId={user.id}
+        userName={user.full_name}
+        onClose={() => setChangingPassword(false)}
+      />
     );
   }
 
@@ -305,8 +241,8 @@ function EditUserDialog({
             </div>
           </div>
 
-          <Button type="button" variant="outline" size="sm" onClick={() => setConfirmingReset(true)}>
-            <KeyRound className="size-3.5" /> Restablecer contraseña
+          <Button type="button" variant="outline" size="sm" onClick={() => setChangingPassword(true)}>
+            <KeyRound className="size-3.5" /> Cambiar contraseña
           </Button>
 
           <div className="flex items-center justify-between">
@@ -381,6 +317,92 @@ function EditUserDialog({
   );
 }
 
+// Acción puramente administrativa: el admin ELIGE la contraseña nueva (dos
+// campos, para detectar un typo antes de guardar) — nunca se pide ni se
+// muestra la actual, porque Supabase Auth nunca la expone. Después de
+// guardar, solo se confirma el éxito — la contraseña nunca vuelve del
+// servidor ni se muestra en pantalla.
+function ChangePasswordDialog({
+  userId,
+  userName,
+  onClose,
+}: {
+  userId: string;
+  userName: string;
+  onClose: () => void;
+}) {
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const mismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
+  const canSave = newPassword.length >= 8 && newPassword === confirmPassword;
+
+  async function handleSave() {
+    if (!canSave) return;
+    setSaving(true);
+    const result = await resetUserPasswordAction({ userId, newPassword });
+    setSaving(false);
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success("Contraseña actualizada correctamente.");
+    onClose();
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Cambiar contraseña de {userName}</DialogTitle>
+          <DialogDescription>
+            No hace falta la contraseña anterior — es una acción administrativa. La persona va a poder
+            iniciar sesión con la contraseña nueva de inmediato.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="new-password">Nueva contraseña</Label>
+            <Input
+              id="new-password"
+              type="password"
+              autoComplete="new-password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="confirm-password">Repetir contraseña</Label>
+            <Input
+              id="confirm-password"
+              type="password"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+            />
+            {mismatch ? <p className="text-xs text-destructive">Las contraseñas no coinciden.</p> : null}
+            {!mismatch && newPassword.length > 0 && newPassword.length < 8 ? (
+              <p className="text-xs text-destructive">Tiene que tener al menos 8 caracteres.</p>
+            ) : null}
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSave} disabled={saving || !canSave}>
+            {saving ? <Loader2 className="animate-spin" /> : null}
+            Guardar nueva contraseña
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function CreateUserDialog({
   open,
   onOpenChange,
@@ -393,10 +415,15 @@ function CreateUserDialog({
   onCreated: () => void;
 }) {
   const [form, setForm] = useState({ email: "", password: "", fullName: "", role: "seller" as AppRole });
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [locationIds, setLocationIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const mismatch = confirmPassword.length > 0 && form.password !== confirmPassword;
+  const canCreate = form.password.length >= 8 && form.password === confirmPassword;
+
   async function handleCreate() {
+    if (!canCreate) return;
     setLoading(true);
     const result = await createUserAction({ ...form, locationIds });
     setLoading(false);
@@ -409,6 +436,7 @@ function CreateUserDialog({
     toast.success("Usuario creado.");
     onOpenChange(false);
     setForm({ email: "", password: "", fullName: "", role: "seller" });
+    setConfirmPassword("");
     setLocationIds([]);
     onCreated();
   }
@@ -434,12 +462,26 @@ function CreateUserDialog({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label>Contraseña provisoria</Label>
+            <Label>Contraseña</Label>
             <Input
-              type="text"
+              type="password"
+              autoComplete="new-password"
               value={form.password}
               onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
             />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Repetir contraseña</Label>
+            <Input
+              type="password"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+            />
+            {mismatch ? <p className="text-xs text-destructive">Las contraseñas no coinciden.</p> : null}
+            {!mismatch && form.password.length > 0 && form.password.length < 8 ? (
+              <p className="text-xs text-destructive">Tiene que tener al menos 8 caracteres.</p>
+            ) : null}
           </div>
           <div className="flex items-center justify-between">
             <Label>Rol</Label>
@@ -480,7 +522,7 @@ function CreateUserDialog({
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={handleCreate} disabled={loading}>
+          <Button onClick={handleCreate} disabled={loading || !canCreate}>
             {loading ? <Loader2 className="animate-spin" /> : null}
             Crear usuario
           </Button>

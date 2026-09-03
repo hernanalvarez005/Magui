@@ -1,5 +1,5 @@
 {
-  "name": "Magui Rejuve · Ventas",
+  "name": "Magui Rejuve",
   "short_name": "Magui Rejuve",
   "description": "Sistema de ventas, precios y stock de Magui Rejuve.",
   "start_url": "/",
@@ -8,6 +8,7 @@
   "theme_color": "#faf8f6",
   "orientation": "portrait-primary",
   "icons": [
-    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
   ]
 }

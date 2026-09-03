@@ -2,19 +2,12 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Save, Wand2 } from "lucide-react";
+import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/client";
 import { suggestDiscountedPrice } from "@/lib/pricing/discount-suggestion";
@@ -80,8 +73,6 @@ export function PriceMatrix({
   const [percentEdited, setPercentEdited] = useState<Map<string, string>>(new Map());
   const [saving, setSaving] = useState(false);
 
-  const [proposeConditionId, setProposeConditionId] = useState(conditions.find((c) => c.code === "TRANSFER")?.id ?? "");
-  const [proposePercent, setProposePercent] = useState("10");
   const listConditionId = conditions.find((c) => c.code === "LIST")?.id;
   const suggestableConditions = conditions.filter((c) => SUGGESTABLE_CODES.includes(c.code));
 
@@ -169,26 +160,6 @@ export function PriceMatrix({
     const current = percentEdited.get(conditionId);
     const originalValue = originalPercent.get(conditionId) ?? 0;
     return current !== (originalValue ? String(originalValue) : "");
-  }
-
-  function applyProposal() {
-    if (!listConditionId || !proposeConditionId) return;
-    const pct = Number(proposePercent);
-    if (Number.isNaN(pct)) {
-      toast.error("Ingresá un porcentaje válido.");
-      return;
-    }
-    setEdited((prev) => {
-      const next = new Map(prev);
-      for (const product of products) {
-        const list = original.get(cellKey(product.id, listConditionId));
-        if (list === undefined) continue;
-        const proposed = suggestDiscountedPrice(list, pct);
-        next.set(cellKey(product.id, proposeConditionId), String(proposed));
-      }
-      return next;
-    });
-    toast.info("Precios propuestos cargados. Revisalos y ajustá antes de guardar.");
   }
 
   async function handleSave() {
@@ -298,44 +269,6 @@ export function PriceMatrix({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-3.5">
-        <Wand2 className="mb-2 size-4 text-muted-foreground" />
-        <div className="flex flex-col gap-1">
-          <span className="text-xs text-muted-foreground">Aplicar porcentaje sobre lista a</span>
-          <Select value={proposeConditionId} onValueChange={setProposeConditionId}>
-            <SelectTrigger className="w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {conditions
-                .filter((c) => c.code !== "LIST")
-                .map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs text-muted-foreground">% OFF</span>
-          <Input
-            type="number"
-            className="w-24"
-            value={proposePercent}
-            onChange={(e) => setProposePercent(e.target.value)}
-          />
-        </div>
-        <Button type="button" variant="outline" onClick={applyProposal}>
-          Proponer precios
-        </Button>
-        <p className="basis-full text-xs text-muted-foreground">
-          Aplica este % una sola vez a todos los productos de la condición elegida (útil para una carga
-          inicial). Para Efectivo y Transferencia también podés dejar el % fijo abajo: ahí se vuelve a
-          sugerir automáticamente cada vez que cambiés la Lista de un producto.
-        </p>
-      </div>
-
       <div className="overflow-x-auto rounded-xl border border-border bg-card">
         <Table>
           <TableHeader>

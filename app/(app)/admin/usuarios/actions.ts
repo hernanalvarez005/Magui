@@ -82,32 +82,31 @@ export async function updateUserAction(input: z.infer<typeof updateUserSchema>):
   return { success: true };
 }
 
-function generateTempPassword() {
-  // 12 caracteres, alfanumérico + símbolo, generado server-side. Nunca se
-  // guarda en ninguna tabla ni se loguea — viaja solo en la respuesta de
-  // esta Server Action, para que el admin se lo pase a la persona una vez.
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-  const bytes = new Uint32Array(12);
-  crypto.getRandomValues(bytes);
-  let password = "";
-  for (const b of bytes) password += alphabet[b % alphabet.length];
-  return `${password}!`;
-}
+const resetPasswordSchema = z.object({
+  userId: z.string().uuid(),
+  newPassword: z.string().min(8, "La contraseña debe tener al menos 8 caracteres."),
+});
 
 export interface ResetPasswordState {
   error?: string;
-  tempPassword?: string;
+  success?: boolean;
 }
 
-export async function resetUserPasswordAction(userId: string): Promise<ResetPasswordState> {
+// Acción administrativa pura: el admin ELIGE la contraseña nueva (nunca se
+// genera ni se muestra la actual — no hace falta, Supabase Auth nunca la
+// expone). No pide la contraseña anterior porque no es un cambio hecho por
+// el propio usuario, es un reset administrativo. La contraseña nueva viaja
+// una única vez, en el body de este POST hacia auth.admin — nunca se
+// persiste en ninguna tabla propia ni se loguea (metadata: {} más abajo).
+export async function resetUserPasswordAction(input: z.infer<typeof resetPasswordSchema>): Promise<ResetPasswordState> {
   const profile = await getCurrentProfile();
   if (profile.role !== "admin") {
-    return { error: "No tenés permiso para restablecer contraseñas." };
+    return { error: "No tenés permiso para cambiar contraseñas." };
   }
 
-  const parsedId = z.string().uuid().safeParse(userId);
-  if (!parsedId.success) {
-    return { error: "Usuario inválido." };
+  const parsed = resetPasswordSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
   }
 
   let serviceClient;
@@ -117,26 +116,26 @@ export async function resetUserPasswordAction(userId: string): Promise<ResetPass
     return { error: "Falta configurar SUPABASE_SERVICE_ROLE_KEY en el servidor." };
   }
 
-  const tempPassword = generateTempPassword();
-  const { error } = await serviceClient.auth.admin.updateUserById(parsedId.data, { password: tempPassword });
-
-  if (!error) {
-    // Nunca se guarda la contraseña generada — solo el hecho de que se
-    // restableció, quién lo hizo y a quién.
-    await serviceClient.from("audit_logs").insert({
-      user_id: profile.id,
-      action: "reset_password",
-      entity_type: "auth.users",
-      entity_id: parsedId.data,
-      metadata: {},
-    });
-  }
+  const { error } = await serviceClient.auth.admin.updateUserById(parsed.data.userId, {
+    password: parsed.data.newPassword,
+  });
 
   if (error) {
     return { error: error.message };
   }
 
-  return { tempPassword };
+  // Nunca se guarda el valor de la contraseña — solo el hecho de que se
+  // cambió, quién lo hizo (el admin autenticado, no la service role) y a
+  // quién.
+  await serviceClient.from("audit_logs").insert({
+    user_id: profile.id,
+    action: "USER_PASSWORD_RESET",
+    entity_type: "auth.users",
+    entity_id: parsed.data.userId,
+    metadata: {},
+  });
+
+  return { success: true };
 }
 
 const createUserSchema = z.object({

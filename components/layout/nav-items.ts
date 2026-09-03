@@ -27,6 +27,17 @@ export const navItems: NavItem[] = [
   // Nueva venta es la única acción de escritura en la barra de navegación —
   // el rol viewer (modo observador, solo lectura) nunca la ve.
   { href: "/ventas/nueva", label: "Nueva venta", icon: ShoppingBag, mobile: true, roles: ["admin", "seller"] },
+  // Precios queda inmediatamente debajo de Nueva venta (pedido explícito
+  // para la navegación de vendedoras: es la pantalla que más consultan
+  // mientras arman una venta). Es una única lista compartida entre roles
+  // (nunca se duplica la entrada) — mover acá también la sube en la nav de
+  // admin, que es el comportamiento esperado cuando el componente es
+  // compartido. Solo consulta (productos/kits, precios vigentes,
+  // promociones vigentes) — visible para los 3 roles. No es "mobile: true":
+  // la barra inferior mobile ya tiene 5 ítems (el máximo recomendado); en
+  // mobile se llega igual desde el menú del header (ver app-shell.tsx), que
+  // está siempre visible.
+  { href: "/precios", label: "Precios", icon: Tag },
   // Igual que Nueva venta: es una acción de escritura, el rol viewer (solo
   // lectura) nunca la ve. No es "mobile: true" — la barra inferior mobile ya
   // tiene su máximo de 5 ítems; se llega igual desde el menú del header.
@@ -35,10 +46,5 @@ export const navItems: NavItem[] = [
   { href: "/stock", label: "Stock", icon: Package, mobile: true },
   { href: "/stock/movimientos", label: "Movimientos", icon: History },
   { href: "/clientes", label: "Clientes", icon: Users, mobile: true },
-  // Solo consulta (productos/kits, precios vigentes, promociones vigentes) —
-  // visible para los 3 roles. No es "mobile: true": la barra inferior mobile
-  // ya tiene 5 ítems (el máximo recomendado); en mobile se llega igual desde
-  // el menú del header (ver app-shell.tsx), que está siempre visible.
-  { href: "/precios", label: "Precios", icon: Tag },
   { href: "/admin/precios", label: "Administración", icon: Settings, roles: ["admin"] },
 ];
