@@ -189,34 +189,59 @@ export function NewSaleClient({
     };
   }, []);
 
-  // Stock de la sede seleccionada (productos trackeables + disponibilidad de kits).
+  // Stock de la sede seleccionada (productos trackeables + disponibilidad de
+  // kits). Canal Web: usa web_admin_stock_availability (RPC security
+  // definer, solo admin) en vez de product_stock_status/kit_availability —
+  // esas vistas dependen del RLS del usuario que consulta, y un admin sin
+  // esa sede en profile_locations vería stock vacío ahí aunque la venta se
+  // cree correctamente (20260201000057 ya se lo permite). La RPC además
+  // devuelve disponible = físico - reservado, no el físico crudo (sección
+  // 4 del pedido: "el stock se reserva ahora" tiene que verse reflejado acá
+  // mismo). Venta presencial: sin cambios, sigue usando las vistas de
+  // siempre — RLS de vendedores/ventas presenciales no se toca.
   useEffect(() => {
     if (!locationId) return;
     let cancelled = false;
 
     async function loadStock() {
-      const [{ data: stockRows }, { data: kitRows }] = await Promise.all([
-        supabase
-          .from("product_stock_status")
-          .select("product_id, quantity, status")
-          .eq("location_id", locationId),
-        supabase.from("kit_availability").select("kit_product_id, buildable_qty").eq("location_id", locationId),
-      ]);
-      if (cancelled) return;
-
       const nextStock: Record<string, number> = {};
       const nextLow: Record<string, boolean> = {};
-      for (const row of stockRows ?? []) {
-        nextStock[row.product_id] = Number(row.quantity);
-        nextLow[row.product_id] = row.status === "bajo";
+      const nextKits: Record<string, number> = {};
+
+      if (isWeb) {
+        const { data: rows } = await supabase.rpc("web_admin_stock_availability", {
+          p_location_id: locationId,
+        });
+        if (cancelled) return;
+        for (const row of rows ?? []) {
+          const available = Number(row.available);
+          if (row.is_kit) {
+            nextKits[row.product_id] = available;
+          } else {
+            nextStock[row.product_id] = available;
+            nextLow[row.product_id] = row.status === "bajo";
+          }
+        }
+      } else {
+        const [{ data: stockRows }, { data: kitRows }] = await Promise.all([
+          supabase
+            .from("product_stock_status")
+            .select("product_id, quantity, status")
+            .eq("location_id", locationId),
+          supabase.from("kit_availability").select("kit_product_id, buildable_qty").eq("location_id", locationId),
+        ]);
+        if (cancelled) return;
+        for (const row of stockRows ?? []) {
+          nextStock[row.product_id] = Number(row.quantity);
+          nextLow[row.product_id] = row.status === "bajo";
+        }
+        for (const row of kitRows ?? []) {
+          nextKits[row.kit_product_id] = row.buildable_qty;
+        }
       }
+
       setStock(nextStock);
       setLowStock(nextLow);
-
-      const nextKits: Record<string, number> = {};
-      for (const row of kitRows ?? []) {
-        nextKits[row.kit_product_id] = row.buildable_qty;
-      }
       setKitAvailability(nextKits);
     }
 
@@ -224,7 +249,7 @@ export function NewSaleClient({
     return () => {
       cancelled = true;
     };
-  }, [locationId, supabase]);
+  }, [locationId, supabase, isWeb]);
 
   // Cuenta de ingreso: obligatoria solo para transferencia/1 pago/3 cuotas,
   // nunca para efectivo ni venta sin costo. El backend (fn_create_sale_core)

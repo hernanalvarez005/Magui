@@ -386,6 +386,20 @@ export type ProductStockStatusRow = {
   product_active: boolean;
 };
 
+// Solo admin (20260201000058) — disponible = físico - reservas ACTIVE, para
+// Sede 25/Sede 37/Depósito únicamente. Alimenta Nueva Venta Web cuando el
+// admin no tiene esa sede en profile_locations (RLS le esconde
+// product_stock_status/kit_availability, pero esta RPC es security definer
+// y no depende de RLS). Nunca se usa para ventas presenciales.
+export type WebAdminStockAvailabilityRow = {
+  location_id: string;
+  location_code: string;
+  product_id: string;
+  is_kit: boolean;
+  available: string;
+  status: "ok" | "bajo" | "sin_stock" | null;
+};
+
 // ---------------------------------------------------------------------------
 // RPC input/output
 // ---------------------------------------------------------------------------
@@ -893,6 +907,10 @@ export type Database = {
           p_is_free_sale?: boolean;
         };
         Returns: PricingQuoteResult;
+      };
+      web_admin_stock_availability: {
+        Args: { p_location_id?: string | null };
+        Returns: WebAdminStockAvailabilityRow[];
       };
       create_sale: {
         Args: {

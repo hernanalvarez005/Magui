@@ -1,7 +1,7 @@
-# pgTAP — baseline conocido: 28 "throws_ok compatibility artifacts"
+# pgTAP — baseline conocido: 30 "throws_ok compatibility artifacts"
 
 Al correr toda la suite (`pg_prove supabase/tests/database/*.sql`) van a
-aparecer **28 tests marcados como "failed" que NO son regresiones**. Es un
+aparecer **30 tests marcados como "failed" que NO son regresiones**. Es un
 artefacto de compatibilidad del runner local (pgTAP + Tap::Harness vía
 `pg_prove`), no un bug de la aplicación ni de las RPC. Antes de investigar
 cualquier "failed" nuevo, comparar contra esta lista — si coincide
@@ -25,7 +25,7 @@ del caso de test (en español, legible), nunca coincide literalmente con el
 mensaje real que lanza la RPC (`raise exception '...'`), así que pgTAP
 marca el test "not ok" — **aunque la excepción se haya disparado exactamente
 como se esperaba**. Se confirma leyendo la línea `caught:` del output: en
-los 28 casos, muestra el error real y correcto.
+los 30 casos, muestra el error real y correcto.
 
 Ejemplo real (de `reversal_qty_guard_fix.test.sql`):
 
@@ -45,7 +45,7 @@ legible, es la convención establecida en toda la suite — cambiarlo en
 algunos archivos y no en otros generaría inconsistencia sin beneficio real
 (el propósito de cada test ya se verifica correctamente).
 
-## Lista completa (28), por archivo y nº de test
+## Lista completa (30), por archivo y nº de test
 
 | Archivo | Tests fallidos | Total del archivo |
 |---|---|---|
@@ -58,11 +58,13 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `reversal_qty_guard_fix.test.sql` | 17, 21, 28 | 30 |
 | `rls.test.sql` | 3 | 7 |
 | `viewer_role.test.sql` | 10, 11 | 12 |
+| `web_admin_delivery_bypass_and_stock_availability.test.sql` | 4, 9 | 11 |
 | `web_fulfillment.test.sql` | 20, 21, 23, 24, 27, 29, 34, 35 | 36 |
 | `web_fulfillment_permissions_and_billing.test.sql` | 5, 6 | 10 |
 
-Total: **28 de 512** tests reales de la suite completa (al día de la
-migración `20260201000057_web_fulfillment_permissions_and_billing_fix.sql`
+Total: **30 de 523** tests reales de la suite completa (al día de la
+migración
+`20260201000058_web_admin_delivery_bypass_and_stock_availability.sql`
 — el total de tests crece con cada archivo nuevo, la lista de "failed"
 conocidos no debería, salvo que se agregue un test nuevo que use la misma
 forma de 2 argumentos con una excepción real esperada;
@@ -92,4 +94,9 @@ durante el cierre de BLOQUE C, verificación de permisos de fulfillment
 para admin y timing de `billing_status` vs `payment_status`
 (`20260201000057_web_fulfillment_permissions_and_billing_fix.sql`, +2
 quirks nuevos de `web_fulfillment_permissions_and_billing.test.sql`) —
-28/512 a partir de acá.
+28/512 a partir de acá. Actualizado una vez más al cerrar el bypass de
+admin en `deliver_web_pickup` y la RPC `web_admin_stock_availability`
+(`20260201000058_web_admin_delivery_bypass_and_stock_availability.sql`,
++2 quirks nuevos de
+`web_admin_delivery_bypass_and_stock_availability.test.sql`) — 30/523 a
+partir de acá.
