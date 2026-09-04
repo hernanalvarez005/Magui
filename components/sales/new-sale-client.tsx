@@ -21,6 +21,7 @@ import { formatCurrency } from "@/lib/utils";
 import { newSaleSchema } from "@/lib/validation/sale";
 import {
   computeRequiresPaymentAccountNow,
+  paymentMethodRequiresBilling,
   resolveFulfillmentLocationId,
   resolveFulfillmentType,
   type FulfillmentChoice,
@@ -49,11 +50,6 @@ interface PaymentAccountOption {
   alias: string | null;
 }
 
-// Formas de pago que la cuenta de ingreso vuelve obligatoria y que
-// disparan facturación pendiente — el backend (fn_create_sale_core) vuelve
-// a decidir esto de forma independiente, esto es solo para mostrar/ocultar
-// el selector en el momento justo.
-const ACCOUNT_REQUIRED_CODES = ["TRANSFER", "CARD_1", "CARD_3"];
 interface DoctorOption {
   id: string;
   code: string;
@@ -263,7 +259,7 @@ export function NewSaleClient({
   // cobrar. No confundir "factura pendiente" con "cobro pendiente" (sección
   // 17 del pedido original) — son ejes distintos, nunca se mezclan.
   const selectedPaymentMethod = paymentMethods.find((pm) => pm.id === paymentMethodId);
-  const requiresBilling = !isFreeSale && ACCOUNT_REQUIRED_CODES.includes(selectedPaymentMethod?.code ?? "");
+  const requiresBilling = !isFreeSale && paymentMethodRequiresBilling(selectedPaymentMethod?.code);
   const requiresPaymentAccountNow = computeRequiresPaymentAccountNow({ requiresBilling, isWeb, paymentStatus });
 
   // Alias para transferencia: a propósito NO es lo mismo que
@@ -281,8 +277,8 @@ export function NewSaleClient({
 
   function handlePaymentMethodChange(id: string) {
     setPaymentMethodId(id);
-    const code = paymentMethods.find((pm) => pm.id === id)?.code ?? "";
-    if (!ACCOUNT_REQUIRED_CODES.includes(code)) setPaymentAccountId("");
+    const code = paymentMethods.find((pm) => pm.id === id)?.code;
+    if (!paymentMethodRequiresBilling(code)) setPaymentAccountId("");
   }
 
   // Cambiar de canal resetea la forma de entrega (nunca queda una sede

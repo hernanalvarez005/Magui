@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   computeRequiresPaymentAccountNow,
+  paymentMethodRequiresBilling,
   resolveFulfillmentLocationId,
   resolveFulfillmentType,
 } from "@/lib/sales/web-fulfillment";
@@ -58,5 +59,20 @@ describe("computeRequiresPaymentAccountNow", () => {
   });
   it("pedido Web PENDIENTE de cobro: NO exige la cuenta todavía — se completa al cobrar", () => {
     expect(computeRequiresPaymentAccountNow({ requiresBilling: true, isWeb: true, paymentStatus: "PENDING" })).toBe(false);
+  });
+});
+
+describe("paymentMethodRequiresBilling", () => {
+  it("Transferencia/1 pago/3 cuotas facturan", () => {
+    expect(paymentMethodRequiresBilling("TRANSFER")).toBe(true);
+    expect(paymentMethodRequiresBilling("CARD_1")).toBe(true);
+    expect(paymentMethodRequiresBilling("CARD_3")).toBe(true);
+  });
+  it("Efectivo no factura", () => {
+    expect(paymentMethodRequiresBilling("CASH")).toBe(false);
+  });
+  it("sin medio de pago elegido todavía, no factura (nunca undefined = true)", () => {
+    expect(paymentMethodRequiresBilling(undefined)).toBe(false);
+    expect(paymentMethodRequiresBilling(null)).toBe(false);
   });
 });

@@ -62,14 +62,14 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `web_fulfillment.test.sql` | 20, 21, 23, 24, 27, 29, 34, 35 | 36 |
 | `web_fulfillment_permissions_and_billing.test.sql` | 5, 6 | 10 |
 
-Total: **30 de 523** tests reales de la suite completa (al día de la
-migración
-`20260201000058_web_admin_delivery_bypass_and_stock_availability.sql`
-— el total de tests crece con cada archivo nuevo, la lista de "failed"
-conocidos no debería, salvo que se agregue un test nuevo que use la misma
-forma de 2 argumentos con una excepción real esperada;
-`web_payment_status_metrics.test.sql` no usa `throws_ok` de 2 argumentos,
-así que suma 9 tests reales sin agregar ningún quirk nuevo).
+Total: **30 de 534** tests reales de la suite completa (al día de la
+migración `20260201000059_web_pending_pickups.sql` — el total de tests
+crece con cada archivo nuevo, la lista de "failed" conocidos no debería,
+salvo que se agregue un test nuevo que use la misma forma de 2 argumentos
+con una excepción real esperada; `web_payment_status_metrics.test.sql` y
+`web_pending_pickups.test.sql` no usan `throws_ok` de 2 argumentos, así
+que suman 9 y 11 tests reales respectivamente sin agregar ningún quirk
+nuevo).
 
 ## Cómo verificar que un "failed" es este artefacto y no una regresión
 
@@ -99,4 +99,7 @@ admin en `deliver_web_pickup` y la RPC `web_admin_stock_availability`
 (`20260201000058_web_admin_delivery_bypass_and_stock_availability.sql`,
 +2 quirks nuevos de
 `web_admin_delivery_bypass_and_stock_availability.test.sql`) — 30/523 a
-partir de acá.
+partir de acá. Actualizado de nuevo con BLOQUE D (bandeja de
+Notificaciones, `20260201000059_web_pending_pickups.sql`,
+`web_pending_pickups.test.sql` no agrega quirks — no usa `throws_ok`) —
+30/534 a partir de acá.

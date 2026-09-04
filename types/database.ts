@@ -400,6 +400,34 @@ export type WebAdminStockAvailabilityRow = {
   status: "ok" | "bajo" | "sin_stock" | null;
 };
 
+// BLOQUE D (20260201000059) — bandeja de Notificaciones. Se deriva de
+// sales/sale_items/products, nunca de una tabla notifications separada.
+// admin ve todos los pendientes (Sede 25 + Sede 37); vendedor/viewer solo
+// su(s) sede(s) real(es) — el filtro de visibilidad vive en la RPC, no acá.
+export type WebPendingPickupItem = {
+  product_name: string;
+  quantity: string;
+  is_kit: boolean;
+};
+
+export type WebPendingPickupRow = {
+  sale_id: string;
+  sale_number: string;
+  sold_at: string;
+  customer_name: string | null;
+  customer_dni: string | null;
+  items: WebPendingPickupItem[];
+  total: string;
+  payment_method_id: string;
+  payment_method_name: string;
+  payment_account_id: string | null;
+  payment_status: SalePaymentStatus;
+  pickup_location_id: string;
+  pickup_location_code: string;
+  pickup_location_name: string;
+  seller_name: string;
+};
+
 // ---------------------------------------------------------------------------
 // RPC input/output
 // ---------------------------------------------------------------------------
@@ -911,6 +939,27 @@ export type Database = {
       web_admin_stock_availability: {
         Args: { p_location_id?: string | null };
         Returns: WebAdminStockAvailabilityRow[];
+      };
+      web_pending_pickups: {
+        Args: Record<string, never>;
+        Returns: WebPendingPickupRow[];
+      };
+      mark_web_order_paid: {
+        Args: {
+          p_sale_id: string;
+          p_payment_method_id?: string | null;
+          p_payment_account_id?: string | null;
+        };
+        Returns: { sale_id: string; payment_status: "PAID"; billing_status: SaleBillingStatus };
+      };
+      deliver_web_pickup: {
+        Args: { p_sale_id: string };
+        Returns: {
+          sale_id: string;
+          fulfillment_status: "DELIVERED";
+          delivered_at: string;
+          reservations_consumed: number;
+        };
       };
       create_sale: {
         Args: {

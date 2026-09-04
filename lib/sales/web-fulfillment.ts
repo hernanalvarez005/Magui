@@ -54,3 +54,16 @@ export function computeRequiresPaymentAccountNow(params: {
   if (params.isWeb && params.paymentStatus === "PENDING") return false;
   return true;
 }
+
+/**
+ * Medios de pago que generan obligación de facturación (fn_create_sale_core
+ * / mark_web_order_paid en el backend usan exactamente esta misma lista —
+ * ver 20260201000057). Centralizado acá para no repetir el array en cada
+ * pantalla que necesita la misma regla (Nueva Venta, el diálogo de cobro de
+ * Notificaciones en BLOQUE D).
+ */
+export const PAYMENT_METHOD_CODES_REQUIRING_BILLING = ["TRANSFER", "CARD_1", "CARD_3"] as const;
+
+export function paymentMethodRequiresBilling(code: string | null | undefined): boolean {
+  return !!code && (PAYMENT_METHOD_CODES_REQUIRING_BILLING as readonly string[]).includes(code);
+}
