@@ -1,7 +1,7 @@
-# pgTAP — baseline conocido: 18 "throws_ok compatibility artifacts"
+# pgTAP — baseline conocido: 37 "throws_ok compatibility artifacts"
 
 Al correr toda la suite (`pg_prove supabase/tests/database/*.sql`) van a
-aparecer **18 tests marcados como "failed" que NO son regresiones**. Es un
+aparecer **37 tests marcados como "failed" que NO son regresiones**. Es un
 artefacto de compatibilidad del runner local (pgTAP + Tap::Harness vía
 `pg_prove`), no un bug de la aplicación ni de las RPC. Antes de investigar
 cualquier "failed" nuevo, comparar contra esta lista — si coincide
@@ -25,7 +25,7 @@ del caso de test (en español, legible), nunca coincide literalmente con el
 mensaje real que lanza la RPC (`raise exception '...'`), así que pgTAP
 marca el test "not ok" — **aunque la excepción se haya disparado exactamente
 como se esperaba**. Se confirma leyendo la línea `caught:` del output: en
-los 18 casos, muestra el error real y correcto.
+los 37 casos, muestra el error real y correcto.
 
 Ejemplo real (de `reversal_qty_guard_fix.test.sql`):
 
@@ -45,7 +45,7 @@ legible, es la convención establecida en toda la suite — cambiarlo en
 algunos archivos y no en otros generaría inconsistencia sin beneficio real
 (el propósito de cada test ya se verifica correctamente).
 
-## Lista completa (18), por archivo y nº de test
+## Lista completa (37), por archivo y nº de test
 
 | Archivo | Tests fallidos | Total del archivo |
 |---|---|---|
@@ -57,12 +57,25 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `promotions.test.sql` | 3, 4, 5 | 10 |
 | `reversal_qty_guard_fix.test.sql` | 17, 21, 28 | 30 |
 | `rls.test.sql` | 3 | 7 |
+| `stock_available_transversal.test.sql` | 7, 9 | 10 |
 | `viewer_role.test.sql` | 10, 11 | 12 |
+| `web_admin_delivery_bypass_and_stock_availability.test.sql` | 4, 9 | 11 |
+| `web_circuit_end_to_end_regression.test.sql` | 16 | 44 |
+| `web_fulfillment.test.sql` | 20, 21, 23, 24, 27, 29, 34, 35 | 36 |
+| `web_fulfillment_permissions_and_billing.test.sql` | 5, 6 | 10 |
+| `web_order_history.test.sql` | 14 | 18 |
+| `web_order_paid_method_change.test.sql` | 3, 5, 6 | 7 |
 
-Total: **18 de 457** tests reales de la suite completa (al día de esta
-migración — el total de tests crece con cada archivo nuevo, la lista de
-"failed" conocidos no debería, salvo que se agregue un test nuevo que use
-la misma forma de 2 argumentos con una excepción real esperada).
+Total: **37 de 613** tests reales de la suite completa (al día de la
+migración `20260201000061_stock_available_transversal.sql` — BLOQUE G no
+agregó ninguna migración nueva, `web_circuit_end_to_end_regression.test.sql`
+prueba comportamiento ya existente de 054-061 encadenado de punta a punta —
+el total de tests crece con cada archivo nuevo, la lista de "failed"
+conocidos no debería, salvo que se agregue un test nuevo que use la misma
+forma de 2 argumentos con una excepción real esperada;
+`web_payment_status_metrics.test.sql` y `web_pending_pickups.test.sql` no
+usan `throws_ok` de 2 argumentos, así que suman 9 y 11 tests reales
+respectivamente sin agregar ningún quirk nuevo).
 
 ## Cómo verificar que un "failed" es este artefacto y no una regresión
 
@@ -79,5 +92,33 @@ la misma forma de 2 argumentos con una excepción real esperada).
 
 Este baseline se estableció durante el bugfix de
 `20260201000053_reversal_qty_guard_fix.sql` (15 quirks preexistentes +
-3 nuevos de `reversal_qty_guard_fix.test.sql`). Antes de esa migración el
-baseline era 15/427; a partir de acá es 18/457.
+3 nuevos de `reversal_qty_guard_fix.test.sql`) — 18/457 en ese momento.
+Actualizado durante BLOQUE B del circuito Ventas Web/Fulfillment/Reservas
+(`20260201000055_web_fulfillment_functions.sql`, +8 quirks nuevos de
+`web_fulfillment.test.sql`) — 26/493 a partir de acá. Actualizado de nuevo
+durante el cierre de BLOQUE C, verificación de permisos de fulfillment
+para admin y timing de `billing_status` vs `payment_status`
+(`20260201000057_web_fulfillment_permissions_and_billing_fix.sql`, +2
+quirks nuevos de `web_fulfillment_permissions_and_billing.test.sql`) —
+28/512 a partir de acá. Actualizado una vez más al cerrar el bypass de
+admin en `deliver_web_pickup` y la RPC `web_admin_stock_availability`
+(`20260201000058_web_admin_delivery_bypass_and_stock_availability.sql`,
++2 quirks nuevos de
+`web_admin_delivery_bypass_and_stock_availability.test.sql`) — 30/523 a
+partir de acá. Actualizado de nuevo con BLOQUE D (bandeja de
+Notificaciones, `20260201000059_web_pending_pickups.sql`,
+`web_pending_pickups.test.sql` no agrega quirks — no usa `throws_ok`) —
+30/534 a partir de acá. Actualizado una vez más al cerrar BLOQUE D
+(auditoría del medio de pago final en `mark_web_order_paid` + viewer
+bloqueado en acciones pero con lectura permitida —
+`web_order_paid_method_change.test.sql`, sin migración nueva, +3 quirks
+nuevos) — 33/541 a partir de acá. Actualizado de nuevo con BLOQUE E
+(Historial de pedidos Web, `20260201000060_web_order_history.sql`, +1
+quirk nuevo de `web_order_history.test.sql`) — 34/559 a partir de acá.
+Actualizado de nuevo con BLOQUE F (stock disponible transversal,
+`20260201000061_stock_available_transversal.sql`, +2 quirks nuevos de
+`stock_available_transversal.test.sql`) — 36/569 a partir de acá.
+Actualizado una vez más con BLOQUE G (regresión final de integración,
+sin migración nueva — `web_circuit_end_to_end_regression.test.sql`
+encadena las 6 combinaciones WEB de punta a punta + snapshot de kit +
+métrica de venta cancelada, +1 quirk nuevo) — 37/613 a partir de acá.

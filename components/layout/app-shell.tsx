@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Settings, Tag, User as UserIcon } from "lucide-react";
+import { Bell, LogOut, Settings, Tag, User as UserIcon } from "lucide-react";
 
 import { Logo } from "@/components/layout/logo";
 import { navItems } from "@/components/layout/nav-items";
@@ -28,11 +28,17 @@ export function AppShell({
   fullName,
   role,
   locationLabel,
+  pendingWebPickupCount,
   children,
 }: {
   fullName: string;
   role: AppRole;
   locationLabel: string;
+  // Contador de Notificaciones (BLOQUE D) — calculado server-side en
+  // app/(app)/layout.tsx, mismo patrón que locationLabel. 0 no oculta el
+  // ítem (la bandeja sigue existiendo aunque esté vacía), solo omite el
+  // "(N)" del label.
+  pendingWebPickupCount: number;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -40,6 +46,13 @@ export function AppShell({
 
   const visibleItems = navItems.filter((item) => !item.roles || item.roles.includes(role));
   const mobileItems = visibleItems.filter((item) => item.mobile).slice(0, 5);
+
+  function navLabel(item: (typeof navItems)[number]) {
+    if (item.href === "/notificaciones" && pendingWebPickupCount > 0) {
+      return `${item.label} (${pendingWebPickupCount})`;
+    }
+    return item.label;
+  }
 
   async function handleSignOut() {
     const supabase = createClient();
@@ -72,7 +85,7 @@ export function AppShell({
               )}
             >
               <item.icon className="size-4.5 shrink-0" />
-              {item.label}
+              {navLabel(item)}
             </Link>
           ))}
         </nav>
@@ -110,9 +123,16 @@ export function AppShell({
                 </p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {/* Visible para los 3 roles — en mobile "Precios" no está en la
-                  barra inferior (ya tiene 5 ítems), así que este menú (siempre
-                  visible arriba a la derecha) es el acceso rápido en celular. */}
+              {/* Visible para los 3 roles — en mobile ni Precios ni
+                  Notificaciones están en la barra inferior (ya tiene 5
+                  ítems), así que este menú (siempre visible arriba a la
+                  derecha) es el acceso rápido en celular. */}
+              <DropdownMenuItem asChild>
+                <Link href="/notificaciones">
+                  <Bell className="mr-2 size-4" />
+                  {pendingWebPickupCount > 0 ? `Notificaciones (${pendingWebPickupCount})` : "Notificaciones"}
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/precios">
                   <Tag className="mr-2 size-4" /> Precios

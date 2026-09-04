@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
+  Bell,
   History,
   LayoutDashboard,
   Package,
@@ -24,6 +25,13 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   { href: "/", label: "Inicio", icon: LayoutDashboard, mobile: true },
+  // Bandeja de pedidos Web pendientes de retiro (BLOQUE D del circuito
+  // Ventas Web). El label "Notificaciones (N)" con el contador real se arma
+  // en app-shell.tsx (mismo patrón que locationLabel: se calcula server-side
+  // en el layout y baja como prop) — acá queda solo la entrada estática de
+  // navegación. No es "mobile: true": la barra inferior ya tiene su máximo
+  // de 5 ítems: se llega igual desde el menú del header (ver app-shell.tsx).
+  { href: "/notificaciones", label: "Notificaciones", icon: Bell },
   // Nueva venta es la única acción de escritura en la barra de navegación —
   // el rol viewer (modo observador, solo lectura) nunca la ve.
   { href: "/ventas/nueva", label: "Nueva venta", icon: ShoppingBag, mobile: true, roles: ["admin", "seller"] },

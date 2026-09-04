@@ -208,10 +208,26 @@ export type SaleRow = {
   // status='replaced'). La dirección inversa se resuelve por consulta
   // (where replaces_sale_id = :id), no hay columna espejo.
   replaces_sale_id: string | null;
+  // Circuito Ventas Web (fulfillment): todas null salvo canal Web. Ejes
+  // independientes de billing_status — nunca se mezclan (ver comentario de
+  // fn_create_sale_core, migración 55).
+  fulfillment_type: SaleFulfillmentType | null;
+  fulfillment_status: SaleFulfillmentStatus | null;
+  payment_status: SalePaymentStatus | null;
+  pickup_location_id: string | null;
+  delivered_at: string | null;
+  delivered_by: string | null;
 };
 
 /** NUNCA un booleano: existe un tercer caso real (no requiere control de facturación). */
 export type SaleBillingStatus = "NOT_REQUIRED" | "PENDING" | "INVOICED";
+
+/** Cómo se le entrega el pedido al cliente — exclusivo del canal Web. */
+export type SaleFulfillmentType = "PICKUP" | "SHIPPING";
+/** PENDING_PICKUP/DELIVERED: ciclo de un PICKUP. SHIPPED: se asigna una única vez, al crear un SHIPPING. */
+export type SaleFulfillmentStatus = "PENDING_PICKUP" | "DELIVERED" | "SHIPPED";
+/** Eje de COBRO — independiente de billing_status (facturación) y de fulfillment_status (entrega). */
+export type SalePaymentStatus = "PAID" | "PENDING";
 
 export type SaleItemRow = {
   id: string;
@@ -368,6 +384,89 @@ export type ProductStockStatusRow = {
   min_stock: string;
   status: "ok" | "bajo" | "sin_stock";
   product_active: boolean;
+  // BLOQUE F (20260201000061) — columnas aditivas, nunca reemplazan
+  // quantity/status (eso sigue siendo el físico crudo, para /stock, el CSV
+  // de inventario y set-stock-dialog). reserved = suma de
+  // sale_stock_reservations ACTIVE; available = quantity - reserved;
+  // available_status = mismo cálculo ok/bajo/sin_stock que status pero
+  // sobre available. Nueva Venta (ambas ramas), Cambios/Devoluciones, Home
+  // y dashboard_report.critical_stock_count usan estas 2 columnas nuevas.
+  reserved: string;
+  available: string;
+  available_status: "ok" | "bajo" | "sin_stock";
+};
+
+// Solo admin (20260201000058) — disponible = físico - reservas ACTIVE, para
+// Sede 25/Sede 37/Depósito únicamente. Alimenta Nueva Venta Web cuando el
+// admin no tiene esa sede en profile_locations (RLS le esconde
+// product_stock_status/kit_availability, pero esta RPC es security definer
+// y no depende de RLS). Nunca se usa para ventas presenciales.
+export type WebAdminStockAvailabilityRow = {
+  location_id: string;
+  location_code: string;
+  product_id: string;
+  is_kit: boolean;
+  available: string;
+  status: "ok" | "bajo" | "sin_stock" | null;
+};
+
+// BLOQUE D (20260201000059) — bandeja de Notificaciones. Se deriva de
+// sales/sale_items/products, nunca de una tabla notifications separada.
+// admin ve todos los pendientes (Sede 25 + Sede 37); vendedor/viewer solo
+// su(s) sede(s) real(es) — el filtro de visibilidad vive en la RPC, no acá.
+export type WebPendingPickupItem = {
+  product_name: string;
+  quantity: string;
+  is_kit: boolean;
+};
+
+export type WebPendingPickupRow = {
+  sale_id: string;
+  sale_number: string;
+  sold_at: string;
+  customer_name: string | null;
+  customer_dni: string | null;
+  items: WebPendingPickupItem[];
+  total: string;
+  payment_method_id: string;
+  payment_method_name: string;
+  payment_account_id: string | null;
+  payment_status: SalePaymentStatus;
+  pickup_location_id: string;
+  pickup_location_code: string;
+  pickup_location_name: string;
+  seller_name: string;
+};
+
+// BLOQUE E (20260201000060) — Historial de pedidos Web: DELIVERED, SHIPPED
+// y CANCELLED (nunca PENDING_PICKUP confirmado, eso sigue en Notificaciones).
+// delivered_at/delivered_by_name quedan null para SHIPPING — no existe una
+// fecha/actor de envío separados en el modelo (auditado, no inventado); el
+// frontend interpreta sold_at como la fecha de envío en ese caso.
+export type WebOrderHistoryDisplayStatus = "DELIVERED" | "SHIPPED" | "CANCELLED";
+
+export type WebOrderHistoryRow = {
+  sale_id: string;
+  sale_number: string;
+  sold_at: string;
+  customer_name: string | null;
+  customer_dni: string | null;
+  items: WebPendingPickupItem[];
+  total: string;
+  payment_method_name: string;
+  payment_status: SalePaymentStatus;
+  fulfillment_type: SaleFulfillmentType;
+  display_status: WebOrderHistoryDisplayStatus;
+  location_id: string;
+  location_code: string;
+  location_name: string;
+  delivered_at: string | null;
+  delivered_by_name: string | null;
+  cancelled_at: string | null;
+  cancelled_by_name: string | null;
+  cancellation_reason: string | null;
+  seller_name: string;
+  total_count: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -429,6 +528,10 @@ export type CreateSaleResult = {
   is_free_sale?: boolean;
   stock_skipped?: boolean;
   billing_status?: SaleBillingStatus;
+  fulfillment_type?: SaleFulfillmentType | null;
+  fulfillment_status?: SaleFulfillmentStatus | null;
+  payment_status?: SalePaymentStatus | null;
+  pickup_location_id?: string | null;
   lines: PricingLine[];
 };
 
@@ -874,6 +977,43 @@ export type Database = {
         };
         Returns: PricingQuoteResult;
       };
+      web_admin_stock_availability: {
+        Args: { p_location_id?: string | null };
+        Returns: WebAdminStockAvailabilityRow[];
+      };
+      web_pending_pickups: {
+        Args: Record<string, never>;
+        Returns: WebPendingPickupRow[];
+      };
+      web_order_history: {
+        Args: {
+          p_location_id?: string | null;
+          p_status?: WebOrderHistoryDisplayStatus | null;
+          p_date_from?: string | null;
+          p_date_to?: string | null;
+          p_search?: string | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: WebOrderHistoryRow[];
+      };
+      mark_web_order_paid: {
+        Args: {
+          p_sale_id: string;
+          p_payment_method_id?: string | null;
+          p_payment_account_id?: string | null;
+        };
+        Returns: { sale_id: string; payment_status: "PAID"; billing_status: SaleBillingStatus };
+      };
+      deliver_web_pickup: {
+        Args: { p_sale_id: string };
+        Returns: {
+          sale_id: string;
+          fulfillment_status: "DELIVERED";
+          delivered_at: string;
+          reservations_consumed: number;
+        };
+      };
       create_sale: {
         Args: {
           p_items: PricingItemInput[];
@@ -891,6 +1031,8 @@ export type Database = {
           p_free_sale_notes?: string | null;
           p_skip_stock_movement?: boolean;
           p_payment_account_id?: string | null;
+          p_fulfillment_type?: SaleFulfillmentType | null;
+          p_payment_status?: SalePaymentStatus | null;
         };
         Returns: CreateSaleResult;
       };

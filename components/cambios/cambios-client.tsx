@@ -164,19 +164,23 @@ export function CambiosClient({ products }: { products: ProductOption[] }) {
   }
 
   // Stock del producto nuevo — SIEMPRE en la sede de la venta original (es
-  // inmutable, no elegible acá), igual patrón que Nueva Venta.
+  // inmutable, no elegible acá), igual patrón que Nueva Venta. BLOQUE F
+  // (20260201000061): disponible (available), no físico crudo — el backend
+  // (create_sale_exchange) ya valida contra reservas ACTIVE antes de
+  // descontar el producto nuevo, así que mostrar disponible acá evita
+  // ofrecer una cantidad que el backend después va a rechazar.
   useEffect(() => {
     if (step !== "new-item" || !selectedSale) return;
     let cancelled = false;
     async function loadStock() {
       if (!selectedSale) return;
       const [{ data: stockRows }, { data: kitRows }] = await Promise.all([
-        supabase.from("product_stock_status").select("product_id, quantity").eq("location_id", selectedSale.location_id),
+        supabase.from("product_stock_status").select("product_id, available").eq("location_id", selectedSale.location_id),
         supabase.from("kit_availability").select("kit_product_id, buildable_qty").eq("location_id", selectedSale.location_id),
       ]);
       if (cancelled) return;
       const nextStock: Record<string, number> = {};
-      for (const row of stockRows ?? []) nextStock[row.product_id] = Number(row.quantity);
+      for (const row of stockRows ?? []) nextStock[row.product_id] = Number(row.available);
       setStock(nextStock);
       const nextKits: Record<string, number> = {};
       for (const row of kitRows ?? []) nextKits[row.kit_product_id] = row.buildable_qty;
