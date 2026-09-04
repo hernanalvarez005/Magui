@@ -1,7 +1,7 @@
-# pgTAP — baseline conocido: 34 "throws_ok compatibility artifacts"
+# pgTAP — baseline conocido: 36 "throws_ok compatibility artifacts"
 
 Al correr toda la suite (`pg_prove supabase/tests/database/*.sql`) van a
-aparecer **34 tests marcados como "failed" que NO son regresiones**. Es un
+aparecer **36 tests marcados como "failed" que NO son regresiones**. Es un
 artefacto de compatibilidad del runner local (pgTAP + Tap::Harness vía
 `pg_prove`), no un bug de la aplicación ni de las RPC. Antes de investigar
 cualquier "failed" nuevo, comparar contra esta lista — si coincide
@@ -25,7 +25,7 @@ del caso de test (en español, legible), nunca coincide literalmente con el
 mensaje real que lanza la RPC (`raise exception '...'`), así que pgTAP
 marca el test "not ok" — **aunque la excepción se haya disparado exactamente
 como se esperaba**. Se confirma leyendo la línea `caught:` del output: en
-los 34 casos, muestra el error real y correcto.
+los 36 casos, muestra el error real y correcto.
 
 Ejemplo real (de `reversal_qty_guard_fix.test.sql`):
 
@@ -45,7 +45,7 @@ legible, es la convención establecida en toda la suite — cambiarlo en
 algunos archivos y no en otros generaría inconsistencia sin beneficio real
 (el propósito de cada test ya se verifica correctamente).
 
-## Lista completa (34), por archivo y nº de test
+## Lista completa (36), por archivo y nº de test
 
 | Archivo | Tests fallidos | Total del archivo |
 |---|---|---|
@@ -57,6 +57,7 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `promotions.test.sql` | 3, 4, 5 | 10 |
 | `reversal_qty_guard_fix.test.sql` | 17, 21, 28 | 30 |
 | `rls.test.sql` | 3 | 7 |
+| `stock_available_transversal.test.sql` | 7, 9 | 10 |
 | `viewer_role.test.sql` | 10, 11 | 12 |
 | `web_admin_delivery_bypass_and_stock_availability.test.sql` | 4, 9 | 11 |
 | `web_fulfillment.test.sql` | 20, 21, 23, 24, 27, 29, 34, 35 | 36 |
@@ -64,12 +65,12 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `web_order_history.test.sql` | 14 | 18 |
 | `web_order_paid_method_change.test.sql` | 3, 5, 6 | 7 |
 
-Total: **34 de 559** tests reales de la suite completa (al día de la
-migración `20260201000060_web_order_history.sql` — el total de tests
-crece con cada archivo nuevo, la lista de "failed" conocidos no debería,
-salvo que se agregue un test nuevo que use la misma forma de 2 argumentos
-con una excepción real esperada; `web_payment_status_metrics.test.sql` y
-`web_pending_pickups.test.sql` no usan `throws_ok` de 2 argumentos, así
+Total: **36 de 569** tests reales de la suite completa (al día de la
+migración `20260201000061_stock_available_transversal.sql` — el total de
+tests crece con cada archivo nuevo, la lista de "failed" conocidos no
+debería, salvo que se agregue un test nuevo que use la misma forma de 2
+argumentos con una excepción real esperada; `web_payment_status_metrics.test.sql`
+y `web_pending_pickups.test.sql` no usan `throws_ok` de 2 argumentos, así
 que suman 9 y 11 tests reales respectivamente sin agregar ningún quirk
 nuevo).
 
@@ -111,3 +112,6 @@ bloqueado en acciones pero con lectura permitida —
 nuevos) — 33/541 a partir de acá. Actualizado de nuevo con BLOQUE E
 (Historial de pedidos Web, `20260201000060_web_order_history.sql`, +1
 quirk nuevo de `web_order_history.test.sql`) — 34/559 a partir de acá.
+Actualizado de nuevo con BLOQUE F (stock disponible transversal,
+`20260201000061_stock_available_transversal.sql`, +2 quirks nuevos de
+`stock_available_transversal.test.sql`) — 36/569 a partir de acá.

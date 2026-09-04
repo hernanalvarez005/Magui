@@ -193,8 +193,13 @@ export function NewSaleClient({
   // cree correctamente (20260201000057 ya se lo permite). La RPC además
   // devuelve disponible = físico - reservado, no el físico crudo (sección
   // 4 del pedido: "el stock se reserva ahora" tiene que verse reflejado acá
-  // mismo). Venta presencial: sin cambios, sigue usando las vistas de
-  // siempre — RLS de vendedores/ventas presenciales no se toca.
+  // mismo). Venta presencial (BLOQUE F, 20260201000061): también pasa a
+  // disponible — usa available/available_status (columnas aditivas de
+  // product_stock_status, quantity/status siguen siendo el físico crudo
+  // sin cambios para quien los necesite) y kit_availability.buildable_qty,
+  // que ahora ya viene calculado con disponibilidad real por componente
+  // (fn_kit_buildable_qty). Sigue siendo un select directo (RLS normal,
+  // sin RPC) — un vendedor con su sede real asignada la lee bien.
   useEffect(() => {
     if (!locationId) return;
     let cancelled = false;
@@ -222,14 +227,14 @@ export function NewSaleClient({
         const [{ data: stockRows }, { data: kitRows }] = await Promise.all([
           supabase
             .from("product_stock_status")
-            .select("product_id, quantity, status")
+            .select("product_id, available, available_status")
             .eq("location_id", locationId),
           supabase.from("kit_availability").select("kit_product_id, buildable_qty").eq("location_id", locationId),
         ]);
         if (cancelled) return;
         for (const row of stockRows ?? []) {
-          nextStock[row.product_id] = Number(row.quantity);
-          nextLow[row.product_id] = row.status === "bajo";
+          nextStock[row.product_id] = Number(row.available);
+          nextLow[row.product_id] = row.available_status === "bajo";
         }
         for (const row of kitRows ?? []) {
           nextKits[row.kit_product_id] = row.buildable_qty;

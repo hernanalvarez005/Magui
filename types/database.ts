@@ -384,6 +384,16 @@ export type ProductStockStatusRow = {
   min_stock: string;
   status: "ok" | "bajo" | "sin_stock";
   product_active: boolean;
+  // BLOQUE F (20260201000061) — columnas aditivas, nunca reemplazan
+  // quantity/status (eso sigue siendo el físico crudo, para /stock, el CSV
+  // de inventario y set-stock-dialog). reserved = suma de
+  // sale_stock_reservations ACTIVE; available = quantity - reserved;
+  // available_status = mismo cálculo ok/bajo/sin_stock que status pero
+  // sobre available. Nueva Venta (ambas ramas), Cambios/Devoluciones, Home
+  // y dashboard_report.critical_stock_count usan estas 2 columnas nuevas.
+  reserved: string;
+  available: string;
+  available_status: "ok" | "bajo" | "sin_stock";
 };
 
 // Solo admin (20260201000058) — disponible = físico - reservas ACTIVE, para

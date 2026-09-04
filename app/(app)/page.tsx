@@ -38,13 +38,16 @@ export default async function HomePage() {
       .limit(5),
     supabase
       .from("product_stock_status")
-      .select("sku, name, location_code, quantity, status")
+      // BLOQUE F (20260201000061): disponible (available/available_status),
+      // no físico crudo — un producto con reservas ACTIVE que agotan el
+      // disponible es una alerta real aunque el físico todavía diga "ok".
+      .select("sku, name, location_code, available, available_status")
       // IMPORTANTE: la vista hace CROSS JOIN con todas las sedes; sin este
       // filtro explícito, una vendedora ve alertas falsas de sedes a las que
       // ni siquiera tiene acceso (RLS oculta la fila del LEFT JOIN, pero no
       // la sede "fantasma" del cross join, así que el stock aparece en 0).
       .in("location_id", profile.locationIds.length > 0 ? profile.locationIds : ["00000000-0000-0000-0000-000000000000"])
-      .in("status", ["bajo", "sin_stock"])
+      .in("available_status", ["bajo", "sin_stock"])
       // Un producto inactivo no es una alerta operativa real — ver
       // 20260201000030_product_lifecycle.sql (columna product_active).
       .eq("product_active", true)
@@ -141,8 +144,8 @@ export default async function HomePage() {
                 <span>
                   {item.name} <span className="text-muted-foreground">· {item.location_code}</span>
                 </span>
-                <Badge variant={item.status === "sin_stock" ? "destructive" : "warning"}>
-                  {item.status === "sin_stock" ? "Sin stock" : `${item.quantity} u.`}
+                <Badge variant={item.available_status === "sin_stock" ? "destructive" : "warning"}>
+                  {item.available_status === "sin_stock" ? "Sin stock" : `${item.available} u.`}
                 </Badge>
               </div>
             ))}
