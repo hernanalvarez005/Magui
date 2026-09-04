@@ -1,7 +1,7 @@
-# pgTAP — baseline conocido: 18 "throws_ok compatibility artifacts"
+# pgTAP — baseline conocido: 26 "throws_ok compatibility artifacts"
 
 Al correr toda la suite (`pg_prove supabase/tests/database/*.sql`) van a
-aparecer **18 tests marcados como "failed" que NO son regresiones**. Es un
+aparecer **26 tests marcados como "failed" que NO son regresiones**. Es un
 artefacto de compatibilidad del runner local (pgTAP + Tap::Harness vía
 `pg_prove`), no un bug de la aplicación ni de las RPC. Antes de investigar
 cualquier "failed" nuevo, comparar contra esta lista — si coincide
@@ -58,11 +58,13 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `reversal_qty_guard_fix.test.sql` | 17, 21, 28 | 30 |
 | `rls.test.sql` | 3 | 7 |
 | `viewer_role.test.sql` | 10, 11 | 12 |
+| `web_fulfillment.test.sql` | 20, 21, 23, 24, 27, 29, 34, 35 | 36 |
 
-Total: **18 de 457** tests reales de la suite completa (al día de esta
-migración — el total de tests crece con cada archivo nuevo, la lista de
-"failed" conocidos no debería, salvo que se agregue un test nuevo que use
-la misma forma de 2 argumentos con una excepción real esperada).
+Total: **26 de 493** tests reales de la suite completa (al día de la
+migración `20260201000055_web_fulfillment_functions.sql` — el total de
+tests crece con cada archivo nuevo, la lista de "failed" conocidos no
+debería, salvo que se agregue un test nuevo que use la misma forma de 2
+argumentos con una excepción real esperada).
 
 ## Cómo verificar que un "failed" es este artefacto y no una regresión
 
@@ -79,5 +81,7 @@ la misma forma de 2 argumentos con una excepción real esperada).
 
 Este baseline se estableció durante el bugfix de
 `20260201000053_reversal_qty_guard_fix.sql` (15 quirks preexistentes +
-3 nuevos de `reversal_qty_guard_fix.test.sql`). Antes de esa migración el
-baseline era 15/427; a partir de acá es 18/457.
+3 nuevos de `reversal_qty_guard_fix.test.sql`) — 18/457 en ese momento.
+Actualizado durante BLOQUE B del circuito Ventas Web/Fulfillment/Reservas
+(`20260201000055_web_fulfillment_functions.sql`, +8 quirks nuevos de
+`web_fulfillment.test.sql`) — 26/493 a partir de acá.
