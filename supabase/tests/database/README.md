@@ -60,11 +60,13 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `viewer_role.test.sql` | 10, 11 | 12 |
 | `web_fulfillment.test.sql` | 20, 21, 23, 24, 27, 29, 34, 35 | 36 |
 
-Total: **26 de 493** tests reales de la suite completa (al día de la
-migración `20260201000055_web_fulfillment_functions.sql` — el total de
-tests crece con cada archivo nuevo, la lista de "failed" conocidos no
-debería, salvo que se agregue un test nuevo que use la misma forma de 2
-argumentos con una excepción real esperada).
+Total: **26 de 502** tests reales de la suite completa (al día de la
+migración `20260201000056_web_payment_status_metrics_filter.sql` — el
+total de tests crece con cada archivo nuevo, la lista de "failed"
+conocidos no debería, salvo que se agregue un test nuevo que use la misma
+forma de 2 argumentos con una excepción real esperada;
+`web_payment_status_metrics.test.sql` no usa `throws_ok` de 2 argumentos,
+así que suma 9 tests reales sin agregar ningún quirk nuevo).
 
 ## Cómo verificar que un "failed" es este artefacto y no una regresión
 
