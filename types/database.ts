@@ -428,6 +428,37 @@ export type WebPendingPickupRow = {
   seller_name: string;
 };
 
+// BLOQUE E (20260201000060) — Historial de pedidos Web: DELIVERED, SHIPPED
+// y CANCELLED (nunca PENDING_PICKUP confirmado, eso sigue en Notificaciones).
+// delivered_at/delivered_by_name quedan null para SHIPPING — no existe una
+// fecha/actor de envío separados en el modelo (auditado, no inventado); el
+// frontend interpreta sold_at como la fecha de envío en ese caso.
+export type WebOrderHistoryDisplayStatus = "DELIVERED" | "SHIPPED" | "CANCELLED";
+
+export type WebOrderHistoryRow = {
+  sale_id: string;
+  sale_number: string;
+  sold_at: string;
+  customer_name: string | null;
+  customer_dni: string | null;
+  items: WebPendingPickupItem[];
+  total: string;
+  payment_method_name: string;
+  payment_status: SalePaymentStatus;
+  fulfillment_type: SaleFulfillmentType;
+  display_status: WebOrderHistoryDisplayStatus;
+  location_id: string;
+  location_code: string;
+  location_name: string;
+  delivered_at: string | null;
+  delivered_by_name: string | null;
+  cancelled_at: string | null;
+  cancelled_by_name: string | null;
+  cancellation_reason: string | null;
+  seller_name: string;
+  total_count: number;
+};
+
 // ---------------------------------------------------------------------------
 // RPC input/output
 // ---------------------------------------------------------------------------
@@ -943,6 +974,18 @@ export type Database = {
       web_pending_pickups: {
         Args: Record<string, never>;
         Returns: WebPendingPickupRow[];
+      };
+      web_order_history: {
+        Args: {
+          p_location_id?: string | null;
+          p_status?: WebOrderHistoryDisplayStatus | null;
+          p_date_from?: string | null;
+          p_date_to?: string | null;
+          p_search?: string | null;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: WebOrderHistoryRow[];
       };
       mark_web_order_paid: {
         Args: {

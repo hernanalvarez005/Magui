@@ -1,8 +1,10 @@
 "use client";
 
-import { Bell, Package, User } from "lucide-react";
+import Link from "next/link";
+import { Bell, History, Package, User } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -44,10 +46,17 @@ export function NotificacionesView({
 }) {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4 p-4 md:p-6">
-      <div className="flex items-center gap-2">
-        <Bell className="size-5 text-muted-foreground" />
-        <h1 className="text-lg font-semibold">Notificaciones</h1>
-        {pickups.length > 0 ? <Badge variant="secondary">{pickups.length} pendientes de retiro</Badge> : null}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Bell className="size-5 text-muted-foreground" />
+          <h1 className="text-lg font-semibold">Notificaciones</h1>
+          {pickups.length > 0 ? <Badge variant="secondary">{pickups.length} pendientes de retiro</Badge> : null}
+        </div>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/notificaciones/historial">
+            <History /> Historial
+          </Link>
+        </Button>
       </div>
 
       {pickups.length === 0 ? (
