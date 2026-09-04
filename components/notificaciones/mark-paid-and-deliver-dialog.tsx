@@ -98,7 +98,16 @@ export function MarkPaidAndDeliverDialog({
     setLoading(false);
 
     if (deliverError) {
-      toast.error(`Se registró el cobro, pero la entrega falló: ${deliverError.message}`);
+      // El cobro YA quedó registrado en la base (mark_web_order_paid ya
+      // commiteó) — nunca se revierte un cobro que puede haber ocurrido
+      // en el mundo real solo porque la entrega falló después. El pedido
+      // queda PAID + PENDING_PICKUP: al refrescar, esta tarjeta pasa a
+      // ofrecer únicamente "Marcar como entregado" (deliver-pickup-dialog),
+      // así que reintentar la entrega es un click aparte, sin volver a
+      // pedir el cobro. El mensaje nunca debe sonar a "tampoco se cobró".
+      toast.info(
+        `Pago registrado correctamente, pero no se pudo registrar la entrega. El pedido continúa pendiente de entrega. (${deliverError.message})`
+      );
       setOpen(false);
       router.refresh();
       return;
