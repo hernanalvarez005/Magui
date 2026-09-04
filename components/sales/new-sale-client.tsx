@@ -19,7 +19,13 @@ import { createClient } from "@/lib/supabase/client";
 import { shouldShowTransferAlias } from "@/lib/sales/payment-account-alias";
 import { formatCurrency } from "@/lib/utils";
 import { newSaleSchema } from "@/lib/validation/sale";
-import type { CreateSaleResult, FreeSaleReason, PricingQuoteResult } from "@/types/database";
+import {
+  computeRequiresPaymentAccountNow,
+  resolveFulfillmentLocationId,
+  resolveFulfillmentType,
+  type FulfillmentChoice,
+} from "@/lib/sales/web-fulfillment";
+import type { CreateSaleResult, FreeSaleReason, PricingQuoteResult, SalePaymentStatus } from "@/types/database";
 
 interface LocationOption {
   id: string;
@@ -118,6 +124,19 @@ export function NewSaleClient({
   const [locationId, setLocationId] = useState(locations[0]?.id ?? "");
   const [paymentMethodId, setPaymentMethodId] = useState(paymentMethods[0]?.id ?? "");
   const [paymentAccountId, setPaymentAccountId] = useState("");
+
+  // Forma de entrega (BLOQUE C, circuito Ventas Web) — exclusiva del canal
+  // Web. Cada opción resuelve directo a (fulfillment_type, sede física):
+  // nunca se vuelve a pedir la sede por separado, para no dar lugar a una
+  // combinación inconsistente que el backend termine rechazando igual.
+  // Reglas puras en lib/sales/web-fulfillment.ts (testeadas ahí).
+  const sed25Location = locations.find((l) => l.code === "SED-25");
+  const sed37Location = locations.find((l) => l.code === "SED-37");
+  const depositoLocation = locations.find((l) => l.code === "DEP");
+  const [fulfillmentChoice, setFulfillmentChoice] = useState<FulfillmentChoice>("");
+  const [paymentStatus, setPaymentStatus] = useState<SalePaymentStatus>("PAID");
+  const fulfillmentType = resolveFulfillmentType(fulfillmentChoice);
+  const fulfillmentLocationId = resolveFulfillmentLocationId(fulfillmentChoice, locations);
   const [cart, setCart] = useState<Record<string, number>>({});
   const [search, setSearch] = useState("");
   const [customer, setCustomer] = useState<CustomerOption | null>(null);
@@ -211,8 +230,16 @@ export function NewSaleClient({
   // nunca para efectivo ni venta sin costo. El backend (fn_create_sale_core)
   // vuelve a decidir esto de forma independiente — esto es solo para
   // mostrar/pedir el campo en el momento justo, nunca la fuente de verdad.
+  //
+  // requiresBilling: sigue exigiendo cliente con DNI (factura pendiente),
+  // sin excepción. requiresPaymentAccountNow es más angosto — un pedido Web
+  // PENDIENTE de cobro puede confirmarse sin la cuenta todavía (no se sabe
+  // en qué cuenta va a entrar un cobro que no pasó), se completa después al
+  // cobrar. No confundir "factura pendiente" con "cobro pendiente" (sección
+  // 17 del pedido original) — son ejes distintos, nunca se mezclan.
   const selectedPaymentMethod = paymentMethods.find((pm) => pm.id === paymentMethodId);
-  const requiresPaymentAccount = !isFreeSale && ACCOUNT_REQUIRED_CODES.includes(selectedPaymentMethod?.code ?? "");
+  const requiresBilling = !isFreeSale && ACCOUNT_REQUIRED_CODES.includes(selectedPaymentMethod?.code ?? "");
+  const requiresPaymentAccountNow = computeRequiresPaymentAccountNow({ requiresBilling, isWeb, paymentStatus });
 
   // Alias para transferencia: a propósito NO es lo mismo que
   // requiresPaymentAccount (eso también incluye 1 pago/3 cuotas) — el alias
@@ -231,6 +258,28 @@ export function NewSaleClient({
     setPaymentMethodId(id);
     const code = paymentMethods.find((pm) => pm.id === id)?.code ?? "";
     if (!ACCOUNT_REQUIRED_CODES.includes(code)) setPaymentAccountId("");
+  }
+
+  // Cambiar de canal resetea la forma de entrega (nunca queda una sede
+  // heredada de una selección Web anterior) y, al salir de Web, apaga venta
+  // sin costo/carga histórica si habían quedado activadas — el backend las
+  // rechaza igual combinadas con fulfillment_type, esto solo evita mostrar
+  // un formulario que va a fallar al confirmar.
+  function handleChannelChange(id: string) {
+    setChannelId(id);
+    setFulfillmentChoice("");
+    setPaymentStatus("PAID");
+    const code = channels.find((c) => c.id === id)?.code;
+    if (code !== "WEB") {
+      setIsFreeSale(false);
+      setIsHistorical(false);
+    }
+  }
+
+  function handleFulfillmentChoiceChange(choice: "PICKUP_25" | "PICKUP_37" | "SHIPPING") {
+    setFulfillmentChoice(choice);
+    const id = resolveFulfillmentLocationId(choice, locations);
+    if (id) setLocationId(id);
   }
 
   const cartItems = useMemo(
@@ -347,12 +396,22 @@ export function NewSaleClient({
       return;
     }
 
-    if (requiresPaymentAccount && !paymentAccountId) {
+    if (isWeb && !fulfillmentType) {
+      toast.error("Elegí la forma de entrega (retiro en sede o envío por correo).");
+      return;
+    }
+
+    if (isWeb && fulfillmentType && !fulfillmentLocationId) {
+      toast.error("No tenés acceso a la sede necesaria para esta forma de entrega. Pedile a un administrador que te la habilite.");
+      return;
+    }
+
+    if (requiresPaymentAccountNow && !paymentAccountId) {
       toast.error("Elegí la cuenta donde ingresó el dinero.");
       return;
     }
 
-    if (requiresPaymentAccount && !customer?.dni) {
+    if (requiresBilling && !customer?.dni) {
       toast.error("Esta operación se puede facturar — necesita un cliente identificado con nombre y DNI.");
       return;
     }
@@ -393,7 +452,9 @@ export function NewSaleClient({
       p_free_sale_notes: parsed.data.free_sale_notes,
       ...(parsed.data.sold_at ? { p_sold_at: parsed.data.sold_at } : {}),
       p_skip_stock_movement: parsed.data.skip_stock_movement,
-      p_payment_account_id: requiresPaymentAccount ? paymentAccountId : null,
+      p_payment_account_id: requiresBilling ? paymentAccountId.trim() || null : null,
+      p_fulfillment_type: isWeb ? fulfillmentType : null,
+      p_payment_status: isWeb ? paymentStatus : null,
     });
     setConfirming(false);
 
@@ -419,12 +480,14 @@ export function NewSaleClient({
     setFreeSaleNotes("");
     setIsHistorical(false);
     setHistoricalSoldAt("");
+    setFulfillmentChoice("");
+    setPaymentStatus("PAID");
     setSkipStockMovement(false);
     setManualPrices({});
   }
 
   if (receipt) {
-    return <ReceiptView receipt={receipt} onNewSale={resetForNewSale} />;
+    return <ReceiptView receipt={receipt} onNewSale={resetForNewSale} locations={locations} />;
   }
 
   return (
@@ -452,7 +515,7 @@ export function NewSaleClient({
         <div className="grid grid-cols-2 gap-2">
           <div className="flex flex-col gap-1">
             <Label className="text-xs text-muted-foreground">Canal</Label>
-            <Select value={channelId} onValueChange={setChannelId}>
+            <Select value={channelId} onValueChange={handleChannelChange}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -465,32 +528,61 @@ export function NewSaleClient({
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-1">
-            <Label className="text-xs text-muted-foreground">
-              {isWeb ? "Sucursal de despacho" : "Sucursal"}
-            </Label>
-            {locations.length <= 1 ? (
-              // Una sola sede habilitada: se muestra fija, no se obliga a
-              // elegir algo cuando no hay ninguna otra opción válida.
-              <div className="flex h-9 items-center rounded-md border border-input bg-muted px-3 text-sm">
-                {locations[0]?.name ?? "—"}
-              </div>
-            ) : (
-              <Select value={locationId} onValueChange={setLocationId}>
+          {isWeb ? (
+            // Web: la sede se resuelve DIRECTO de la forma de entrega — nunca
+            // se vuelve a pedir por separado (sección 25 del pedido).
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Forma de entrega</Label>
+              <Select
+                value={fulfillmentChoice}
+                onValueChange={(v) => handleFulfillmentChoiceChange(v as "PICKUP_25" | "PICKUP_37" | "SHIPPING")}
+              >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Elegí una opción" />
                 </SelectTrigger>
                 <SelectContent>
-                  {locations.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>
-                      {l.name}
-                    </SelectItem>
-                  ))}
+                  {sed25Location ? <SelectItem value="PICKUP_25">Retiro Sede 25</SelectItem> : null}
+                  {sed37Location ? <SelectItem value="PICKUP_37">Retiro Sede 37</SelectItem> : null}
+                  {depositoLocation ? <SelectItem value="SHIPPING">Envío por correo</SelectItem> : null}
                 </SelectContent>
               </Select>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs text-muted-foreground">Sucursal</Label>
+              {locations.length <= 1 ? (
+                // Una sola sede habilitada: se muestra fija, no se obliga a
+                // elegir algo cuando no hay ninguna otra opción válida.
+                <div className="flex h-9 items-center rounded-md border border-input bg-muted px-3 text-sm">
+                  {locations[0]?.name ?? "—"}
+                </div>
+              ) : (
+                <Select value={locationId} onValueChange={setLocationId}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {locations.map((l) => (
+                      <SelectItem key={l.id} value={l.id}>
+                        {l.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          )}
         </div>
+
+        {/* Efecto de stock — sección 4 del pedido: siempre visible apenas se
+            elige la forma de entrega, nunca implícito. */}
+        {isWeb && fulfillmentType ? (
+          <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+            {fulfillmentType === "PICKUP"
+              ? "Retiro en sede: el stock se reserva ahora y se descuenta recién cuando se entregue el pedido."
+              : "Envío por correo: el stock se descuenta de inmediato del Depósito."}
+          </p>
+        ) : null}
 
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -544,6 +636,7 @@ export function NewSaleClient({
         doctorId={doctorId}
         onDoctorIdChange={setDoctorId}
         isWeb={isWeb}
+        fulfillmentSelected={!isWeb || !!fulfillmentType}
         externalSource={externalSource}
         onExternalSourceChange={setExternalSource}
         externalOrderId={externalOrderId}
@@ -566,11 +659,14 @@ export function NewSaleClient({
         paymentMethods={paymentMethods}
         paymentMethodId={paymentMethodId}
         onPaymentMethodChange={handlePaymentMethodChange}
-        requiresPaymentAccount={requiresPaymentAccount}
+        requiresBilling={requiresBilling}
+        requiresPaymentAccount={requiresPaymentAccountNow}
         paymentAccounts={paymentAccounts}
         paymentAccountId={paymentAccountId}
         onPaymentAccountChange={setPaymentAccountId}
         showAlias={showAlias}
+        paymentStatus={paymentStatus}
+        onPaymentStatusChange={setPaymentStatus}
         online={online}
         confirming={confirming}
         onConfirm={handleConfirm}
@@ -579,7 +675,18 @@ export function NewSaleClient({
   );
 }
 
-function ReceiptView({ receipt, onNewSale }: { receipt: CreateSaleResult; onNewSale: () => void }) {
+function ReceiptView({
+  receipt,
+  onNewSale,
+  locations,
+}: {
+  receipt: CreateSaleResult;
+  onNewSale: () => void;
+  locations: LocationOption[];
+}) {
+  const pickupLocationName = receipt.pickup_location_id
+    ? (locations.find((l) => l.id === receipt.pickup_location_id)?.name ?? null)
+    : null;
   return (
     <div className="mx-auto flex max-w-md flex-col items-center gap-5 px-4 py-10 text-center">
       <div className="flex size-16 items-center justify-center rounded-full bg-success/20">
@@ -592,6 +699,18 @@ function ReceiptView({ receipt, onNewSale }: { receipt: CreateSaleResult; onNewS
         <p className="text-sm text-muted-foreground">{receipt.sale_number}</p>
         {receipt.stock_skipped ? (
           <p className="mt-1 text-xs text-warning-foreground">Carga histórica — no se descontó del stock real.</p>
+        ) : null}
+        {receipt.fulfillment_type ? (
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
+            <Badge variant="secondary" className="font-normal">
+              {receipt.fulfillment_type === "PICKUP"
+                ? `Retiro pendiente — ${pickupLocationName ?? "sede"}`
+                : "Envío — descontado de Depósito"}
+            </Badge>
+            <Badge variant={receipt.payment_status === "PENDING" ? "destructive" : "success"} className="font-normal">
+              {receipt.payment_status === "PENDING" ? "PENDIENTE DE COBRO" : "PAGADO"}
+            </Badge>
+          </div>
         ) : null}
       </div>
 

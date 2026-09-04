@@ -29,7 +29,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CustomerPickerFields, type CustomerOption } from "@/components/sales/customer-picker-dialog";
 import { useMediaQuery } from "@/lib/hooks/use-media-query";
 import { cn, formatCurrency } from "@/lib/utils";
-import type { FreeSaleReason, PricingQuoteResult } from "@/types/database";
+import type { FreeSaleReason, PricingQuoteResult, SalePaymentStatus } from "@/types/database";
 
 interface DoctorOption {
   id: string;
@@ -124,6 +124,7 @@ export function NewSaleCart({
   doctorId,
   onDoctorIdChange,
   isWeb,
+  fulfillmentSelected,
   externalSource,
   onExternalSourceChange,
   externalOrderId,
@@ -146,11 +147,14 @@ export function NewSaleCart({
   paymentMethods,
   paymentMethodId,
   onPaymentMethodChange,
+  requiresBilling,
   requiresPaymentAccount,
   paymentAccounts,
   paymentAccountId,
   onPaymentAccountChange,
   showAlias,
+  paymentStatus,
+  onPaymentStatusChange,
   online,
   confirming,
   onConfirm,
@@ -175,6 +179,7 @@ export function NewSaleCart({
   doctorId: string;
   onDoctorIdChange: (id: string) => void;
   isWeb: boolean;
+  fulfillmentSelected: boolean;
   externalSource: string;
   onExternalSourceChange: (v: string) => void;
   externalOrderId: string;
@@ -197,11 +202,18 @@ export function NewSaleCart({
   paymentMethods: PaymentMethodOption[];
   paymentMethodId: string;
   onPaymentMethodChange: (id: string) => void;
+  // requiresBilling: cliente con DNI + facturación pendiente, siempre exigido
+  // para estas formas de pago. requiresPaymentAccount es más angosto — un
+  // pedido Web PENDIENTE de cobro puede confirmarse sin la cuenta todavía
+  // (ver comentario en new-sale-client.tsx). Nunca se confunden.
+  requiresBilling: boolean;
   requiresPaymentAccount: boolean;
   paymentAccounts: PaymentAccountOption[];
   paymentAccountId: string;
   onPaymentAccountChange: (id: string) => void;
   showAlias: boolean;
+  paymentStatus: SalePaymentStatus;
+  onPaymentStatusChange: (status: SalePaymentStatus) => void;
   online: boolean;
   confirming: boolean;
   onConfirm: () => void;
@@ -218,8 +230,9 @@ export function NewSaleCart({
   // igual criterio que el resto de las validaciones de este formulario.
   const issues: string[] = [];
   if (cartItems.length === 0) issues.push("Agregá al menos un producto.");
+  if (isWeb && !fulfillmentSelected) issues.push("Elegí la forma de entrega (retiro en sede o envío por correo).");
   if (!paymentMethodId) issues.push("Elegí un medio de pago.");
-  if (requiresPaymentAccount && !customer?.dni) issues.push("Para este medio de pago necesitás asociar un cliente con DNI.");
+  if (requiresBilling && !customer?.dni) issues.push("Para este medio de pago necesitás asociar un cliente con DNI.");
   if (requiresPaymentAccount && !paymentAccountId) issues.push("Elegí la cuenta donde ingresó el dinero.");
   if (isFreeSale && !freeSaleReason) issues.push("Elegí un motivo para la entrega sin costo.");
   if (isHistorical && !historicalSoldAt) issues.push("Elegí la fecha de la venta histórica.");
@@ -346,7 +359,7 @@ export function NewSaleCart({
                 customer={customer}
                 onSelect={onSelectCustomer}
                 onClear={onClearCustomer}
-                requiresPaymentAccount={requiresPaymentAccount}
+                requiresPaymentAccount={requiresBilling}
               />
 
               {/* C. Doctora */}
@@ -402,96 +415,146 @@ export function NewSaleCart({
                       <Textarea value={notes} onChange={(e) => onNotesChange(e.target.value)} rows={2} />
                     </div>
 
-                    {/* Venta sin costo */}
-                    <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <Gift className="size-4 text-muted-foreground" />
-                        <div>
-                          <p className="text-sm font-medium">Venta sin costo</p>
-                          <p className="text-xs text-muted-foreground">Regalo, muestra, canje o cortesía — total $0</p>
-                        </div>
-                      </div>
-                      <Switch
-                        checked={isFreeSale}
-                        onCheckedChange={(checked) => {
-                          onIsFreeSaleChange(checked);
-                          // No combina con precio manual (el backend también
-                          // lo rechaza) — se limpia para que no quede un
-                          // override "fantasma" si se desactiva de nuevo.
-                          if (checked) onClearManualPrices();
-                        }}
-                      />
-                    </div>
-                    {isFreeSale ? (
-                      <div className="flex flex-col gap-2 rounded-xl border border-warning/40 bg-warning/10 p-3.5">
-                        <Label className="text-sm">Motivo</Label>
-                        <Select value={freeSaleReason} onValueChange={(v) => onFreeSaleReasonChange(v as FreeSaleReason)}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Seleccioná un motivo" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {FREE_SALE_REASONS.map((r) => (
-                              <SelectItem key={r.value} value={r.value}>
-                                {r.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {freeSaleReason === "OTHER" ? (
-                          <Textarea
-                            placeholder="Contá el motivo…"
-                            value={freeSaleNotes}
-                            onChange={(e) => onFreeSaleNotesChange(e.target.value)}
-                            rows={2}
-                          />
-                        ) : null}
-                      </div>
-                    ) : null}
-
-                    {/* Carga histórica: solo admin */}
-                    {isAdminHistoricalAllowed && !isFreeSale ? (
+                    {/* Venta sin costo / Carga histórica: ninguna de las dos
+                        combina con un pedido Web (fn_create_sale_core las
+                        rechaza igual si viene fulfillment_type) — se ocultan
+                        directamente para no mostrar un formulario que va a
+                        fallar al confirmar. */}
+                    {!isWeb ? (
                       <>
+                        {/* Venta sin costo */}
                         <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
                           <div className="flex items-center gap-2">
-                            <History className="size-4 text-muted-foreground" />
+                            <Gift className="size-4 text-muted-foreground" />
                             <div>
-                              <p className="text-sm font-medium">Carga histórica</p>
-                              <p className="text-xs text-muted-foreground">Registrar una venta con fecha pasada</p>
+                              <p className="text-sm font-medium">Venta sin costo</p>
+                              <p className="text-xs text-muted-foreground">Regalo, muestra, canje o cortesía — total $0</p>
                             </div>
                           </div>
-                          <Switch checked={isHistorical} onCheckedChange={onIsHistoricalChange} />
+                          <Switch
+                            checked={isFreeSale}
+                            onCheckedChange={(checked) => {
+                              onIsFreeSaleChange(checked);
+                              // No combina con precio manual (el backend también
+                              // lo rechaza) — se limpia para que no quede un
+                              // override "fantasma" si se desactiva de nuevo.
+                              if (checked) onClearManualPrices();
+                            }}
+                          />
                         </div>
-                        {isHistorical ? (
-                          <div className="flex flex-col gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3.5">
-                            <div className="flex flex-col gap-1.5">
-                              <Label className="text-sm">Fecha y hora de la venta</Label>
-                              <Input
-                                type="datetime-local"
-                                value={historicalSoldAt}
-                                onChange={(e) => onHistoricalSoldAtChange(e.target.value)}
+                        {isFreeSale ? (
+                          <div className="flex flex-col gap-2 rounded-xl border border-warning/40 bg-warning/10 p-3.5">
+                            <Label className="text-sm">Motivo</Label>
+                            <Select value={freeSaleReason} onValueChange={(v) => onFreeSaleReasonChange(v as FreeSaleReason)}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Seleccioná un motivo" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {FREE_SALE_REASONS.map((r) => (
+                                  <SelectItem key={r.value} value={r.value}>
+                                    {r.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {freeSaleReason === "OTHER" ? (
+                              <Textarea
+                                placeholder="Contá el motivo…"
+                                value={freeSaleNotes}
+                                onChange={(e) => onFreeSaleNotesChange(e.target.value)}
+                                rows={2}
                               />
-                            </div>
-                            <label className="flex items-start gap-2 text-sm">
-                              <input
-                                type="checkbox"
-                                className="mt-0.5"
-                                checked={skipStockMovement}
-                                onChange={(e) => onSkipStockMovementChange(e.target.checked)}
-                              />
-                              <span>
-                                No descontar del stock real
-                                <span className="block text-xs text-muted-foreground">
-                                  Para cargar ventas ya despachadas hace tiempo, cuyo stock actual ya no las refleja.
-                                </span>
-                              </span>
-                            </label>
+                            ) : null}
                           </div>
+                        ) : null}
+
+                        {/* Carga histórica: solo admin */}
+                        {isAdminHistoricalAllowed && !isFreeSale ? (
+                          <>
+                            <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+                              <div className="flex items-center gap-2">
+                                <History className="size-4 text-muted-foreground" />
+                                <div>
+                                  <p className="text-sm font-medium">Carga histórica</p>
+                                  <p className="text-xs text-muted-foreground">Registrar una venta con fecha pasada</p>
+                                </div>
+                              </div>
+                              <Switch checked={isHistorical} onCheckedChange={onIsHistoricalChange} />
+                            </div>
+                            {isHistorical ? (
+                              <div className="flex flex-col gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3.5">
+                                <div className="flex flex-col gap-1.5">
+                                  <Label className="text-sm">Fecha y hora de la venta</Label>
+                                  <Input
+                                    type="datetime-local"
+                                    value={historicalSoldAt}
+                                    onChange={(e) => onHistoricalSoldAtChange(e.target.value)}
+                                  />
+                                </div>
+                                <label className="flex items-start gap-2 text-sm">
+                                  <input
+                                    type="checkbox"
+                                    className="mt-0.5"
+                                    checked={skipStockMovement}
+                                    onChange={(e) => onSkipStockMovementChange(e.target.checked)}
+                                  />
+                                  <span>
+                                    No descontar del stock real
+                                    <span className="block text-xs text-muted-foreground">
+                                      Para cargar ventas ya despachadas hace tiempo, cuyo stock actual ya no las refleja.
+                                    </span>
+                                  </span>
+                                </label>
+                              </div>
+                            ) : null}
+                          </>
                         ) : null}
                       </>
                     ) : null}
                   </div>
                 ) : null}
               </div>
+
+              {/* Estado de pago — exclusivo del canal Web (sección 9/16 del
+                  pedido). Eje independiente de billing_status: nunca se
+                  confunde "pagado" con "facturado". */}
+              {isWeb ? (
+                <div className="flex flex-col gap-2">
+                  <Label className="text-sm">Estado de pago</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onPaymentStatusChange("PAID")}
+                      className={cn(
+                        "rounded-xl border-2 px-3 py-2.5 text-sm font-semibold transition-colors",
+                        paymentStatus === "PAID"
+                          ? "border-success bg-success/10 text-success-foreground"
+                          : "border-border text-muted-foreground hover:bg-accent"
+                      )}
+                    >
+                      PAGADO
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onPaymentStatusChange("PENDING")}
+                      className={cn(
+                        "rounded-xl border-2 px-3 py-2.5 text-sm font-semibold transition-colors",
+                        paymentStatus === "PENDING"
+                          ? "border-destructive bg-destructive/10 text-destructive"
+                          : "border-border text-muted-foreground hover:bg-accent"
+                      )}
+                    >
+                      PENDIENTE DE COBRO
+                    </button>
+                  </div>
+                  {paymentStatus === "PENDING" ? (
+                    <p className="text-xs text-muted-foreground">
+                      Se puede confirmar sin la cuenta de cobro todavía — se completa después, al cobrar. La
+                      vendedora que retire/entregue va a ver claramente que hay que cobrar antes.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
 
               {/* E. Medio de pago */}
               {!isFreeSale ? (
@@ -520,12 +583,15 @@ export function NewSaleCart({
                     })}
                   </div>
 
-                  {requiresPaymentAccount ? (
+                  {requiresBilling ? (
                     <div className="flex flex-col gap-1.5 pt-1">
-                      <Label className="text-sm">Cuenta donde ingresó el dinero</Label>
+                      <Label className="text-sm">
+                        Cuenta donde ingresó el dinero
+                        {!requiresPaymentAccount ? <span className="font-normal text-muted-foreground"> (opcional por ahora)</span> : null}
+                      </Label>
                       <Select value={paymentAccountId} onValueChange={onPaymentAccountChange}>
                         <SelectTrigger>
-                          <SelectValue placeholder="Elegí la cuenta" />
+                          <SelectValue placeholder={requiresPaymentAccount ? "Elegí la cuenta" : "Todavía no se sabe (opcional)"} />
                         </SelectTrigger>
                         <SelectContent>
                           {paymentAccounts.map((pa) => (
@@ -536,7 +602,9 @@ export function NewSaleCart({
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-muted-foreground">
-                        Esta operación va a quedar pendiente de facturación — necesita cliente con DNI.
+                        {requiresPaymentAccount
+                          ? "Esta operación va a quedar pendiente de facturación — necesita cliente con DNI."
+                          : "Pendiente de cobro: se completa al cobrar (mark_web_order_paid). Igual necesita cliente con DNI para poder facturarse."}
                       </p>
 
                       {showAlias ? (

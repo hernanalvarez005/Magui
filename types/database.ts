@@ -208,10 +208,26 @@ export type SaleRow = {
   // status='replaced'). La dirección inversa se resuelve por consulta
   // (where replaces_sale_id = :id), no hay columna espejo.
   replaces_sale_id: string | null;
+  // Circuito Ventas Web (fulfillment): todas null salvo canal Web. Ejes
+  // independientes de billing_status — nunca se mezclan (ver comentario de
+  // fn_create_sale_core, migración 55).
+  fulfillment_type: SaleFulfillmentType | null;
+  fulfillment_status: SaleFulfillmentStatus | null;
+  payment_status: SalePaymentStatus | null;
+  pickup_location_id: string | null;
+  delivered_at: string | null;
+  delivered_by: string | null;
 };
 
 /** NUNCA un booleano: existe un tercer caso real (no requiere control de facturación). */
 export type SaleBillingStatus = "NOT_REQUIRED" | "PENDING" | "INVOICED";
+
+/** Cómo se le entrega el pedido al cliente — exclusivo del canal Web. */
+export type SaleFulfillmentType = "PICKUP" | "SHIPPING";
+/** PENDING_PICKUP/DELIVERED: ciclo de un PICKUP. SHIPPED: se asigna una única vez, al crear un SHIPPING. */
+export type SaleFulfillmentStatus = "PENDING_PICKUP" | "DELIVERED" | "SHIPPED";
+/** Eje de COBRO — independiente de billing_status (facturación) y de fulfillment_status (entrega). */
+export type SalePaymentStatus = "PAID" | "PENDING";
 
 export type SaleItemRow = {
   id: string;
@@ -429,6 +445,10 @@ export type CreateSaleResult = {
   is_free_sale?: boolean;
   stock_skipped?: boolean;
   billing_status?: SaleBillingStatus;
+  fulfillment_type?: SaleFulfillmentType | null;
+  fulfillment_status?: SaleFulfillmentStatus | null;
+  payment_status?: SalePaymentStatus | null;
+  pickup_location_id?: string | null;
   lines: PricingLine[];
 };
 
@@ -891,6 +911,8 @@ export type Database = {
           p_free_sale_notes?: string | null;
           p_skip_stock_movement?: boolean;
           p_payment_account_id?: string | null;
+          p_fulfillment_type?: SaleFulfillmentType | null;
+          p_payment_status?: SalePaymentStatus | null;
         };
         Returns: CreateSaleResult;
       };
