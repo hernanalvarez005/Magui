@@ -9,7 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDateTime, saleStatusLabel } from "@/lib/utils";
 import type { SaleRow } from "@/types/database";
 
 // Solo los campos que esta tabla (y el mapeo de page.tsx) realmente usa —
@@ -121,13 +121,14 @@ export function SalesTable({ rows }: { rows: Row[] }) {
 }
 
 function SaleStatusBadge({ status }: { status: SaleRow["status"] }) {
-  if (status === "cancelled") return <Badge variant="destructive">Cancelada</Badge>;
+  const label = saleStatusLabel(status);
+  if (status === "cancelled") return <Badge variant="destructive">{label}</Badge>;
   // Reemplazada por un cambio de producto — nunca "Confirmada" (no cuenta en
   // ninguna métrica activa, y no es ni un borrador ni una anulación).
-  if (status === "replaced") return <Badge variant="outline">Reemplazada</Badge>;
+  if (status === "replaced") return <Badge variant="outline">{label}</Badge>;
   // Devuelta en su totalidad (neto $0 en todas sus líneas) — distinto de
   // 'replaced': acá el dinero volvió al cliente, no se llevó nada a cambio.
-  if (status === "returned") return <Badge variant="outline">Devuelta</Badge>;
-  if (status === "draft") return <Badge variant="secondary">Borrador</Badge>;
-  return <Badge variant="success">Confirmada</Badge>;
+  if (status === "returned") return <Badge variant="outline">{label}</Badge>;
+  if (status === "draft") return <Badge variant="secondary">{label}</Badge>;
+  return <Badge variant="success">{label}</Badge>;
 }
