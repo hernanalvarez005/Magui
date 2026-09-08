@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AlertTriangle, Globe, PackageSearch, Percent, Receipt, ShoppingBag, TrendingUp } from "lucide-react";
+import { AlertTriangle, Globe, PackageSearch, Percent, ShoppingBag } from "lucide-react";
 
 import { getCurrentProfile } from "@/lib/auth/get-profile";
 import { createClient } from "@/lib/supabase/server";
@@ -9,10 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardFilters } from "@/components/dashboard/dashboard-filters";
 import { BarList } from "@/components/dashboard/bar-list";
+import { BillingSummary } from "@/components/dashboard/billing-summary";
 import { RevenueByDayChart } from "@/components/dashboard/revenue-by-day-chart";
 import { ProductsDonutChart } from "@/components/dashboard/products-donut-chart";
 import { TopKitsList } from "@/components/dashboard/top-kits-list";
-import { formatCurrency, todayInBuenosAires } from "@/lib/utils";
+import { todayInBuenosAires } from "@/lib/utils";
 import type { DashboardProductsBreakdown, DashboardReport } from "@/types/database";
 
 export const metadata: Metadata = { title: "Magui Rejuve" };
@@ -98,13 +99,20 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
         </p>
       ) : (
         <>
+          {/* Ajuste UX: los 3 KPIs monetarios (Facturación, Ticket promedio,
+              Comisión generada) viven en su propio bloque con el ícono de
+              ojo para ocultar/mostrar — ver billing-summary.tsx. Los KPIs
+              no monetarios de abajo no se ven afectados por ese toggle. */}
+          <BillingSummary
+            revenue={data.kpis.revenue}
+            avgTicket={data.kpis.avg_ticket}
+            commissionTotal={data.kpis.commission_total}
+          />
+
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Kpi icon={ShoppingBag} label="Ventas" value={String(data.kpis.sales_count)} />
-            <Kpi icon={TrendingUp} label="Facturación" value={formatCurrency(data.kpis.revenue)} />
-            <Kpi icon={Receipt} label="Ticket promedio" value={formatCurrency(data.kpis.avg_ticket)} />
             <Kpi icon={ShoppingBag} label="Unidades vendidas" value={String(data.kpis.units_sold)} />
             <Kpi icon={Globe} label="Ventas web" value={String(data.kpis.web_sales_count)} />
-            <Kpi icon={Percent} label="Comisión generada" value={formatCurrency(data.kpis.commission_total)} />
             <Kpi
               icon={AlertTriangle}
               label="Stock crítico"
