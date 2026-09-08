@@ -75,6 +75,12 @@ set role authenticated;
 select set_config('request.jwt.claim.sub', 'd0000000-0000-0000-0000-000000000001', false);
 
 -- 4 unidades de PROD-ESP con el 3x2 activo -> floor(4/3) = 1 unidad gratis, la más barata
+-- Migración 64: 4 unidades con group_size=3 parte en 3 líneas — gratis (1),
+-- pagas-en-grupo (2, ahora atribuidas a la promoción) y excedente (1, fuera
+-- de cualquier grupo completo, sin atribuir). Antes de la migración 64 el
+-- motor mezclaba pagas-en-grupo y excedente en un único remanente (2
+-- líneas) — ver three_for_two_promotion_attribution_fix.test.sql para la
+-- batería completa de ese fix.
 select is(
   jsonb_array_length(
     quote_sale(
@@ -82,8 +88,8 @@ select is(
       (select id from payment_methods where code = 'CASH')
     ) -> 'lines'
   ),
-  2,
-  '3x2 con 4 unidades de un solo producto parte la línea en pagas + gratis'
+  3,
+  '3x2 con 4 unidades de un solo producto parte la línea en gratis + pagas-en-grupo + excedente'
 );
 
 select is(
@@ -140,7 +146,13 @@ select is(
   'Duo: ambos productos del par reciben el descuento cuando están juntos en el carrito'
 );
 
--- No-stackable excluye a las stackable: 3x2 (no combinable) + duo (combinable) en el mismo carrito -> solo el 3x2 aplica
+-- No-stackable excluye a las stackable: 3x2 (no combinable) + duo (combinable) en el mismo carrito -> solo el 3x2 aplica.
+-- Se verifica por producto (nunca ninguna línea de PROD-NIAC/PROD-VITC queda
+-- tagueada), no por conteo total de líneas tagueadas — ese conteo depende de
+-- cuántas líneas produce el 3x2 internamente (2 desde la migración 64: qty=3
+-- es múltiplo exacto de group_size=3, sin excedente — gratis + pagas-en-grupo,
+-- ambas tagueadas), que es un detalle interno ajeno a lo que este test
+-- verifica realmente.
 select is(
   (
     select count(*)::int
@@ -155,9 +167,12 @@ select is(
       ) -> 'lines'
     ) l
     where l ->> 'applied_promotion_id' is not null
+      and (l ->> 'product_id')::uuid in (
+        (select id from products where sku = 'PROD-NIAC'), (select id from products where sku = 'PROD-VITC')
+      )
   ),
-  1,
-  'No-stackable (3x2) excluye a la stackable (duo) cuando ambas matchean el mismo carrito'
+  0,
+  'No-stackable (3x2) excluye a la stackable (duo) cuando ambas matchean el mismo carrito — ninguna línea de duo queda tagueada'
 );
 
 select * from finish();

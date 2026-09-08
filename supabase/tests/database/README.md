@@ -67,13 +67,14 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `web_order_history.test.sql` | 14 | 18 |
 | `web_order_paid_method_change.test.sql` | 3, 5, 6 | 7 |
 
-Total: **50 de 638** tests reales de la suite completa (al día de la
-migración `20260201000063_promotion_payment_methods.sql` — el total de tests
-crece con cada archivo nuevo, la lista de "failed" conocidos no debería,
-salvo que se agregue un test nuevo que use la misma forma de 2 argumentos
-con una excepción real esperada; `web_payment_status_metrics.test.sql` y
-`web_pending_pickups.test.sql` no usan `throws_ok` de 2 argumentos, así que
-suman 9 y 11 tests reales respectivamente sin agregar ningún quirk nuevo).
+Total: **50 de 654** tests reales de la suite completa (al día de la
+migración `20260201000064_three_for_two_promotion_attribution_fix.sql` — el
+total de tests crece con cada archivo nuevo, la lista de "failed" conocidos
+no debería, salvo que se agregue un test nuevo que use la misma forma de 2
+argumentos con una excepción real esperada; `web_payment_status_metrics.test.sql`,
+`web_pending_pickups.test.sql` y `three_for_two_promotion_attribution_fix.test.sql`
+no usan `throws_ok` de 2 argumentos, así que suman 9, 11 y 16 tests reales
+respectivamente sin agregar ningún quirk nuevo).
 
 ## Cómo verificar que un "failed" es este artefacto y no una regresión
 
@@ -124,4 +125,7 @@ Actualizado de nuevo con "Formas de pago habilitadas por promoción"
 (`20260201000063_promotion_payment_methods.sql`, +13 quirks nuevos de
 `promotion_payment_methods.test.sql` — 13 de sus 25 tests son `throws_ok` de
 2 argumentos, mismo patrón que el resto de la suite) — 50/638 a partir de
-acá.
+acá. Actualizado una vez más con el fix de atribución THREE_FOR_TWO en
+Analytics de promociones (`20260201000064_three_for_two_promotion_attribution_fix.sql`,
+`three_for_two_promotion_attribution_fix.test.sql` no agrega quirks — no usa
+`throws_ok`) — 50/654 a partir de acá.
