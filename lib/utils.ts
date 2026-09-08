@@ -1,6 +1,8 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+import type { SaleStatus } from "@/types/database";
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -91,6 +93,24 @@ export function whatsAppLink(raw: string | null | undefined): string | null {
  */
 export function normalizeDni(value: string): string {
   return value.replace(/[^0-9]/g, "");
+}
+
+/**
+ * Etiqueta legible de sales.status — única fuente de verdad, reutilizada por
+ * el badge del listado de Ventas (components/sales/sales-table.tsx) y por la
+ * exportación XLSX (lib/xlsx-ventas.ts), para que ambos lugares digan
+ * exactamente lo mismo ante el mismo status. sale-detail-view.tsx usa un
+ * texto más descriptivo a propósito para esa pantalla puntual (ej. "Anulada
+ * / Reemplazada por cambio") — no comparte esta función porque su contexto
+ * (detalle de una venta) amerita más contexto que un badge de tabla o una
+ * celda de export.
+ */
+export function saleStatusLabel(status: SaleStatus): string {
+  if (status === "cancelled") return "Cancelada";
+  if (status === "replaced") return "Reemplazada";
+  if (status === "returned") return "Devuelta";
+  if (status === "draft") return "Borrador";
+  return "Confirmada";
 }
 
 /** Fecha de "hoy" en zona horaria de negocio, como YYYY-MM-DD, para filtros de reportes. */
