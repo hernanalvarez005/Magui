@@ -20,6 +20,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   PromotionFormDialog,
   type EditablePromotion,
+  type PaymentMethodCandidate,
   type ProductCandidate,
 } from "@/components/admin/promotion-form-dialog";
 import { formatDate } from "@/lib/utils";
@@ -41,6 +42,7 @@ interface Promotion {
   valid_until: string | null;
   notes: string | null;
   productIds: string[];
+  paymentMethodIds: string[];
 }
 
 export interface PriceConditionOption {
@@ -86,10 +88,12 @@ export function PromotionsTable({
   promotions,
   products,
   priceConditions,
+  paymentMethods,
 }: {
   promotions: Promotion[];
   products: ProductCandidate[];
   priceConditions: PriceConditionOption[];
+  paymentMethods: PaymentMethodCandidate[];
 }) {
   const router = useRouter();
   const [overrides, setOverrides] = useState<Record<string, Partial<Promotion>>>({});
@@ -98,6 +102,7 @@ export function PromotionsTable({
   const rows = promotions.map((p) => ({ ...p, ...overrides[p.id] }));
   const nameById = new Map(products.map((p) => [p.id, p]));
   const conditionNameById = new Map(priceConditions.map((c) => [c.id, c.name]));
+  const paymentMethodNameById = new Map(paymentMethods.map((pm) => [pm.id, pm.name]));
 
   async function toggleActive(id: string, active: boolean) {
     if (!active) {
@@ -135,6 +140,7 @@ export function PromotionsTable({
               <TableHead>Promoción</TableHead>
               <TableHead>Condición base</TableHead>
               <TableHead>Productos</TableHead>
+              <TableHead>Medios de pago</TableHead>
               <TableHead className="text-right">Prioridad</TableHead>
               <TableHead>Combinable</TableHead>
               <TableHead>Vigencia</TableHead>
@@ -167,6 +173,13 @@ export function PromotionsTable({
                   <TableCell className="text-xs text-muted-foreground">
                     {p.productIds.map((id) => nameById.get(id)?.sku ?? "?").join(", ") || "—"}
                   </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {p.paymentMethodIds.length === 0 ? (
+                      <Badge variant="warning">Todos (sin restringir)</Badge>
+                    ) : (
+                      p.paymentMethodIds.map((id) => paymentMethodNameById.get(id) ?? "?").join(", ")
+                    )}
+                  </TableCell>
                   <TableCell className="text-right">{p.priority}</TableCell>
                   <TableCell>
                     <Badge variant="outline">{p.stackable ? "Sí" : "No"}</Badge>
@@ -193,7 +206,7 @@ export function PromotionsTable({
               ))}
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="py-6 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={10} className="py-6 text-center text-sm text-muted-foreground">
                   Todavía no hay promociones cargadas.
                 </TableCell>
               </TableRow>
@@ -207,6 +220,7 @@ export function PromotionsTable({
           promotion={(editing === "new" ? null : editing) as EditablePromotion | null}
           products={products}
           priceConditions={priceConditions}
+          paymentMethods={paymentMethods}
           open
           onOpenChange={(o) => !o && setEditing(null)}
           onSaved={() => {

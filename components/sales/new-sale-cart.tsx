@@ -110,6 +110,7 @@ export function NewSaleCart({
   cartItems,
   products,
   promotions,
+  allowedPaymentMethodIds,
   quote,
   quoting,
   onRemoveItem,
@@ -165,6 +166,10 @@ export function NewSaleCart({
   cartItems: { product_id: string; quantity: number; manual_price?: number }[];
   products: ProductOption[];
   promotions: PromotionOption[];
+  /** null = sin restricción (sin promoción ganadora, o solo promociones
+   * legacy sin configurar, o canal Web). [] = intersección vacía entre
+   * varias promociones del carrito — ningún medio confirma la venta. */
+  allowedPaymentMethodIds: string[] | null;
   quote: PricingQuoteResult | null;
   quoting: boolean;
   onRemoveItem: (productId: string) => void;
@@ -232,6 +237,13 @@ export function NewSaleCart({
   if (cartItems.length === 0) issues.push("Agregá al menos un producto.");
   if (isWeb && !fulfillmentSelected) issues.push("Elegí la forma de entrega (retiro en sede o envío por correo).");
   if (!paymentMethodId) issues.push("Elegí un medio de pago.");
+  // Formas de pago habilitadas por promoción (migración 63) — Web queda
+  // exceptuada (allowedPaymentMethodIds llega null en ese caso desde el
+  // padre). [] = intersección vacía entre promociones del carrito: mismo
+  // mensaje que "medio no permitido", cubre los dos casos.
+  else if (allowedPaymentMethodIds !== null && !allowedPaymentMethodIds.includes(paymentMethodId)) {
+    issues.push("Este método de pago no está disponible para esta promoción.");
+  }
   if (requiresBilling && !customer?.dni) issues.push("Para este medio de pago necesitás asociar un cliente con DNI.");
   if (requiresPaymentAccount && !paymentAccountId) issues.push("Elegí la cuenta donde ingresó el dinero.");
   if (isFreeSale && !freeSaleReason) issues.push("Elegí un motivo para la entrega sin costo.");
@@ -564,20 +576,33 @@ export function NewSaleCart({
                     {paymentMethods.map((pm) => {
                       const Icon = PAYMENT_ICONS[pm.code] ?? Banknote;
                       const active = pm.id === paymentMethodId;
+                      // Todos los medios quedan siempre visibles — nunca
+                      // desaparecen del selector — solo se deshabilitan los
+                      // incompatibles con la/s promoción/es ganadora/s del
+                      // carrito, con 🔒 para dejar claro que es la promo, no
+                      // que el medio dejó de existir en el sistema.
+                      const disabledByPromotion = allowedPaymentMethodIds !== null && !allowedPaymentMethodIds.includes(pm.id);
                       return (
                         <button
                           key={pm.id}
                           type="button"
+                          disabled={disabledByPromotion}
                           onClick={() => onPaymentMethodChange(pm.id)}
+                          title={disabledByPromotion ? "No disponible con esta promoción" : undefined}
                           className={cn(
                             "flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl border-2 px-2 py-2.5 text-center text-xs font-medium leading-tight transition-colors",
-                            active
-                              ? "border-primary bg-primary/10 text-primary"
-                              : "border-border text-muted-foreground hover:bg-accent"
+                            disabledByPromotion
+                              ? "cursor-not-allowed border-border/60 text-muted-foreground/50"
+                              : active
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border text-muted-foreground hover:bg-accent"
                           )}
                         >
                           <Icon className="size-5 shrink-0" />
                           <span className="text-balance">{pm.name}</span>
+                          {disabledByPromotion ? (
+                            <span className="text-[10px] leading-none">🔒 No disponible con esta promoción</span>
+                          ) : null}
                         </button>
                       );
                     })}

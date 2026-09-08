@@ -1,7 +1,7 @@
-# pgTAP — baseline conocido: 37 "throws_ok compatibility artifacts"
+# pgTAP — baseline conocido: 50 "throws_ok compatibility artifacts"
 
 Al correr toda la suite (`pg_prove supabase/tests/database/*.sql`) van a
-aparecer **37 tests marcados como "failed" que NO son regresiones**. Es un
+aparecer **50 tests marcados como "failed" que NO son regresiones**. Es un
 artefacto de compatibilidad del runner local (pgTAP + Tap::Harness vía
 `pg_prove`), no un bug de la aplicación ni de las RPC. Antes de investigar
 cualquier "failed" nuevo, comparar contra esta lista — si coincide
@@ -25,7 +25,7 @@ del caso de test (en español, legible), nunca coincide literalmente con el
 mensaje real que lanza la RPC (`raise exception '...'`), así que pgTAP
 marca el test "not ok" — **aunque la excepción se haya disparado exactamente
 como se esperaba**. Se confirma leyendo la línea `caught:` del output: en
-los 37 casos, muestra el error real y correcto.
+los 50 casos, muestra el error real y correcto.
 
 Ejemplo real (de `reversal_qty_guard_fix.test.sql`):
 
@@ -45,7 +45,7 @@ legible, es la convención establecida en toda la suite — cambiarlo en
 algunos archivos y no en otros generaría inconsistencia sin beneficio real
 (el propósito de cada test ya se verifica correctamente).
 
-## Lista completa (37), por archivo y nº de test
+## Lista completa (50), por archivo y nº de test
 
 | Archivo | Tests fallidos | Total del archivo |
 |---|---|---|
@@ -54,6 +54,7 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `exchange_legacy_stock_reversal.test.sql` | 17, 21 | 23 |
 | `mejoras.test.sql` | 1, 6, 8, 11 | 12 |
 | `pricing_and_sales.test.sql` | 9 | 11 |
+| `promotion_payment_methods.test.sql` | 1, 2, 3, 4, 11, 12, 15, 16, 17, 19, 20, 22, 23 | 25 |
 | `promotions.test.sql` | 3, 4, 5 | 10 |
 | `reversal_qty_guard_fix.test.sql` | 17, 21, 28 | 30 |
 | `rls.test.sql` | 3 | 7 |
@@ -66,16 +67,13 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `web_order_history.test.sql` | 14 | 18 |
 | `web_order_paid_method_change.test.sql` | 3, 5, 6 | 7 |
 
-Total: **37 de 613** tests reales de la suite completa (al día de la
-migración `20260201000061_stock_available_transversal.sql` — BLOQUE G no
-agregó ninguna migración nueva, `web_circuit_end_to_end_regression.test.sql`
-prueba comportamiento ya existente de 054-061 encadenado de punta a punta —
-el total de tests crece con cada archivo nuevo, la lista de "failed"
-conocidos no debería, salvo que se agregue un test nuevo que use la misma
-forma de 2 argumentos con una excepción real esperada;
-`web_payment_status_metrics.test.sql` y `web_pending_pickups.test.sql` no
-usan `throws_ok` de 2 argumentos, así que suman 9 y 11 tests reales
-respectivamente sin agregar ningún quirk nuevo).
+Total: **50 de 638** tests reales de la suite completa (al día de la
+migración `20260201000063_promotion_payment_methods.sql` — el total de tests
+crece con cada archivo nuevo, la lista de "failed" conocidos no debería,
+salvo que se agregue un test nuevo que use la misma forma de 2 argumentos
+con una excepción real esperada; `web_payment_status_metrics.test.sql` y
+`web_pending_pickups.test.sql` no usan `throws_ok` de 2 argumentos, así que
+suman 9 y 11 tests reales respectivamente sin agregar ningún quirk nuevo).
 
 ## Cómo verificar que un "failed" es este artefacto y no una regresión
 
@@ -122,3 +120,8 @@ Actualizado una vez más con BLOQUE G (regresión final de integración,
 sin migración nueva — `web_circuit_end_to_end_regression.test.sql`
 encadena las 6 combinaciones WEB de punta a punta + snapshot de kit +
 métrica de venta cancelada, +1 quirk nuevo) — 37/613 a partir de acá.
+Actualizado de nuevo con "Formas de pago habilitadas por promoción"
+(`20260201000063_promotion_payment_methods.sql`, +13 quirks nuevos de
+`promotion_payment_methods.test.sql` — 13 de sus 25 tests son `throws_ok` de
+2 argumentos, mismo patrón que el resto de la suite) — 50/638 a partir de
+acá.
