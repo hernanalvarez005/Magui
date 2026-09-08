@@ -294,6 +294,17 @@ export type PromotionProductRow = {
   created_at: string;
 };
 
+// Formas de pago habilitadas por promoción (migración 63). Sin filas para
+// una promoción = sin restricción configurada (legacy, admite cualquier
+// medio activo) — nunca alcanzable para una promoción creada/editada
+// después de esta migración (set_promotion_payment_methods exige >= 1).
+export type PromotionPaymentMethodRow = {
+  id: string;
+  promotion_id: string;
+  payment_method_id: string;
+  created_at: string;
+};
+
 export type InventoryBalanceRow = {
   location_id: string;
   product_id: string;
@@ -913,6 +924,15 @@ export type Database = {
         Update: Partial<PromotionProductRow>;
         Relationships: [];
       };
+      // Igual criterio que promotion_products: composición vía RPC
+      // (set_promotion_payment_methods), insert/delete directo disponible por
+      // RLS pero la UI de admin nunca lo usa.
+      promotion_payment_methods: {
+        Row: PromotionPaymentMethodRow;
+        Insert: { promotion_id: string; payment_method_id: string } & Partial<PromotionPaymentMethodRow>;
+        Update: Partial<PromotionPaymentMethodRow>;
+        Relationships: [];
+      };
       customers: {
         Row: CustomerRow;
         Insert: { full_name: string } & Partial<CustomerRow>;
@@ -1088,6 +1108,13 @@ export type Database = {
       set_promotion_products: {
         Args: { p_promotion_id: string; p_product_ids: string[] };
         Returns: { promotion_id: string; product_count: number };
+      };
+      // Formas de pago habilitadas por promoción (migración 63) — mismo
+      // patrón que set_promotion_products (delete+insert atómico, admin-only,
+      // exige al menos 1 medio siempre que se llama).
+      set_promotion_payment_methods: {
+        Args: { p_promotion_id: string; p_payment_method_ids: string[] };
+        Returns: { promotion_id: string; payment_method_count: number };
       };
       set_product_price: {
         Args: {

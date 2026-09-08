@@ -50,10 +50,20 @@ export interface EditablePromotion {
   valid_until: string | null;
   notes: string | null;
   productIds: string[];
+  // [] = legacy sin configurar todavía (admite cualquier medio de pago
+  // activo — ver 20260201000063_promotion_payment_methods.sql). Al guardar
+  // desde acá SIEMPRE queda con al menos 1 elegido.
+  paymentMethodIds: string[];
 }
 
 export interface PriceConditionOption {
   id: string;
+  name: string;
+}
+
+export interface PaymentMethodCandidate {
+  id: string;
+  code: string;
   name: string;
 }
 
@@ -83,6 +93,7 @@ export function PromotionFormDialog({
   promotion,
   products,
   priceConditions,
+  paymentMethods,
   open,
   onOpenChange,
   onSaved,
@@ -91,6 +102,7 @@ export function PromotionFormDialog({
   promotion: EditablePromotion | null;
   products: ProductCandidate[];
   priceConditions: PriceConditionOption[];
+  paymentMethods: PaymentMethodCandidate[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
@@ -110,6 +122,15 @@ export function PromotionFormDialog({
     notes: promotion?.notes ?? "",
   });
   const [productIds, setProductIds] = useState<string[]>(promotion?.productIds ?? []);
+  // Legacy sin configurar (paymentMethodIds llega vacío desde el server):
+  // se precargan TODOS los medios activos para reflejar el comportamiento
+  // efectivo de hoy ("sin restricción" = "todos permitidos") — si el admin
+  // guarda sin tocar nada, la promoción queda explícitamente configurada
+  // con todos, dejando de ser legacy. Alta nueva: arranca vacía, obliga a
+  // elegir a propósito (mismo criterio de "no permitir guardar sin elegir").
+  const [paymentMethodIds, setPaymentMethodIds] = useState<string[]>(
+    promotion ? (promotion.paymentMethodIds.length > 0 ? promotion.paymentMethodIds : paymentMethods.map((pm) => pm.id)) : []
+  );
   const [saving, setSaving] = useState(false);
 
   // Duo sigue siendo exactamente 2 (mecanismo de pareja, sin cambios). 3x2 y
@@ -127,6 +148,10 @@ export function PromotionFormDialog({
     });
   }
 
+  function togglePaymentMethod(id: string) {
+    setPaymentMethodIds((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
+  }
+
   async function handleSave() {
     const parsed = promotionSchema.safeParse({
       code: form.code,
@@ -142,6 +167,7 @@ export function PromotionFormDialog({
       valid_until: form.validUntil,
       notes: form.notes,
       product_ids: productIds,
+      payment_method_ids: paymentMethodIds,
     });
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? "Revisá los datos de la promoción.");
@@ -194,10 +220,21 @@ export function PromotionFormDialog({
       p_product_ids: parsed.data.product_ids,
     });
 
+    if (productsError) {
+      setSaving(false);
+      toast.error(productsError.message);
+      return;
+    }
+
+    const { error: paymentMethodsError } = await supabase.rpc("set_promotion_payment_methods", {
+      p_promotion_id: promotionId,
+      p_payment_method_ids: parsed.data.payment_method_ids,
+    });
+
     setSaving(false);
 
-    if (productsError) {
-      toast.error(productsError.message);
+    if (paymentMethodsError) {
+      toast.error(paymentMethodsError.message);
       return;
     }
 
@@ -396,6 +433,32 @@ export function PromotionFormDialog({
                 <p className="py-2 text-center text-xs text-muted-foreground">No hay productos activos.</p>
               ) : null}
             </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <Label>Formas de pago habilitadas</Label>
+              {paymentMethodIds.length > 0 ? (
+                <span className="text-xs text-muted-foreground">
+                  {paymentMethodIds.length} seleccionado{paymentMethodIds.length === 1 ? "" : "s"}
+                </span>
+              ) : null}
+            </div>
+            <div className="flex flex-col gap-1 rounded-md border border-border p-2">
+              {paymentMethods.map((pm) => (
+                <label key={pm.id} className="flex items-center gap-2 pl-1 text-sm">
+                  <input type="checkbox" checked={paymentMethodIds.includes(pm.id)} onChange={() => togglePaymentMethod(pm.id)} />
+                  {pm.name}
+                </label>
+              ))}
+              {paymentMethods.length === 0 ? (
+                <p className="py-2 text-center text-xs text-muted-foreground">No hay medios de pago activos.</p>
+              ) : null}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Solo aplica a ventas presenciales (Sede 25 / Sede 37) — las Ventas Web no se restringen
+              por esta configuración. Necesitás elegir al menos uno para guardar.
+            </p>
           </div>
 
           <div className="flex flex-col gap-1.5">

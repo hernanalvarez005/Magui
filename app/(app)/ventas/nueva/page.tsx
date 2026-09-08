@@ -29,6 +29,7 @@ export default async function NewSalePage() {
     { data: products },
     { data: kitComponents },
     { data: promotions },
+    { data: promotionPaymentMethods },
   ] = await Promise.all([
     supabase
       .from("stock_locations")
@@ -61,6 +62,11 @@ export default async function NewSalePage() {
       .from("promotions")
       .select("id, name, type, discount_percent, group_size, minimum_quantity")
       .eq("active", true),
+    // [] para una promoción = sin restricción configurada (legacy, admite
+    // cualquier medio) — ver 20260201000063_promotion_payment_methods.sql.
+    // Solo se usa para avisar en la UI (§7/§8 del pedido); el backend
+    // (fn_create_sale_core) es la autoridad real, canal <> WEB únicamente.
+    supabase.from("promotion_payment_methods").select("promotion_id, payment_method_id"),
   ]);
 
   if (!locations || locations.length === 0) {
@@ -90,6 +96,13 @@ export default async function NewSalePage() {
   // en el modelo de datos, solo se oculta del selector para este rol.
   const allowedChannels = (channels ?? []).filter((c) => profile.role === "admin" || c.code !== "WEB");
 
+  // promotion_id -> ids de medios de pago permitidos. Ausente/[] = legacy
+  // sin configurar, no restringe nada (mismo criterio que /admin/promociones).
+  const promotionPaymentMethodIds: Record<string, string[]> = {};
+  for (const ppm of promotionPaymentMethods ?? []) {
+    (promotionPaymentMethodIds[ppm.promotion_id] ??= []).push(ppm.payment_method_id);
+  }
+
   return (
     <NewSaleClient
       seller={{ id: profile.id, fullName: profile.fullName }}
@@ -100,6 +113,7 @@ export default async function NewSalePage() {
       doctors={doctors ?? []}
       products={(products ?? []).map((p) => ({ ...p, kitContents: kitContents.get(p.id) ?? null }))}
       promotions={promotions ?? []}
+      promotionPaymentMethodIds={promotionPaymentMethodIds}
       isAdmin={profile.role === "admin"}
     />
   );

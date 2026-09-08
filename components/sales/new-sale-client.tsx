@@ -26,6 +26,7 @@ import {
   resolveFulfillmentType,
   type FulfillmentChoice,
 } from "@/lib/sales/web-fulfillment";
+import { computeAllowedPaymentMethodIds, mapToLookup } from "@/lib/sales/promotion-payment-methods";
 import type { CreateSaleResult, FreeSaleReason, PricingQuoteResult, SalePaymentStatus } from "@/types/database";
 
 interface LocationOption {
@@ -101,6 +102,7 @@ export function NewSaleClient({
   doctors,
   products,
   promotions,
+  promotionPaymentMethodIds,
   isAdmin,
 }: {
   seller: { id: string; fullName: string };
@@ -111,6 +113,9 @@ export function NewSaleClient({
   doctors: DoctorOption[];
   products: ProductOption[];
   promotions: PromotionOption[];
+  /** promotion_id -> ids de medios de pago permitidos. Ausente/[] = legacy
+   * sin configurar, no restringe nada (ver 20260201000063). */
+  promotionPaymentMethodIds: Record<string, string[]>;
   isAdmin: boolean;
 }) {
   const supabase = useMemo(() => createClient(), []);
@@ -357,6 +362,43 @@ export function NewSaleClient({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(cartItems), paymentMethodId, isFreeSale]);
+
+  // Formas de pago habilitadas por promoción (migración 63) — exclusivo de
+  // ventas presenciales, Web queda exceptuada (fn_create_sale_core aplica
+  // exactamente el mismo criterio). null = sin restricción (sin promoción
+  // ganadora, o solo promociones legacy sin configurar); [] = intersección
+  // vacía entre varias promociones del carrito, ningún medio confirma la
+  // venta. El backend es la autoridad real — esto es solo para avisar antes
+  // de confirmar.
+  const promotionPaymentMethodsLookup = useMemo(
+    () => mapToLookup(new Map(Object.entries(promotionPaymentMethodIds))),
+    [promotionPaymentMethodIds]
+  );
+  const allowedPaymentMethodIds =
+    !isWeb && quote?.ok
+      ? computeAllowedPaymentMethodIds(
+          quote.lines.map((l) => l.applied_promotion_id),
+          promotionPaymentMethodsLookup
+        )
+      : null;
+
+  // Cambio de carrito/promoción invalida un medio antes válido (sección 8
+  // del pedido): si el medio elegido deja de estar en la intersección
+  // permitida tras un recálculo de quote, se limpia la selección y se pide
+  // elegir de nuevo — nunca se confirma en silencio con una combinación
+  // inválida.
+  useEffect(() => {
+    if (!paymentMethodId) return;
+    if (allowedPaymentMethodIds !== null && !allowedPaymentMethodIds.includes(paymentMethodId)) {
+      // Reset deliberado de una selección que dejó de ser válida por un
+      // cambio externo (carrito/promoción recalculados en el servidor), no
+      // estado derivable en el propio render — necesita el toast como aviso.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPaymentMethodId("");
+      toast.error("Este método de pago no está disponible para esta promoción.");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(allowedPaymentMethodIds), paymentMethodId]);
 
   function setQuantity(productId: string, quantity: number) {
     // Feedback breve (sección 8 del pedido "no abrir carrito automáticamente")
@@ -648,6 +690,7 @@ export function NewSaleClient({
         cartItems={cartItems}
         products={products}
         promotions={promotions}
+        allowedPaymentMethodIds={allowedPaymentMethodIds}
         quote={quote}
         quoting={quoting}
         onRemoveItem={(id) => setQuantity(id, 0)}

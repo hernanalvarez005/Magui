@@ -28,6 +28,12 @@ export const promotionSchema = z
     valid_until: z.string().optional().or(z.literal("")),
     notes: z.string().trim().max(300).optional().or(z.literal("")),
     product_ids: z.array(z.string().uuid()),
+    // Medios de pago habilitados para esta promoción (ventas presenciales
+    // Sede 25/Sede 37 — Web queda exceptuada, ver fn_create_sale_core).
+    // Igual criterio que product_ids: siempre al menos 1 al guardar
+    // explícitamente — una promoción legacy nunca vuelve a quedar "sin
+    // configurar" una vez que se edita y guarda desde acá.
+    payment_method_ids: z.array(z.string().uuid()).min(1, "Elegí al menos un medio de pago habilitado."),
   })
   .superRefine((data, ctx) => {
     if (data.type === "THREE_FOR_TWO") {
