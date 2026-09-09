@@ -146,9 +146,13 @@ select is(
   'Duo: ambos productos del par reciben el descuento cuando están juntos en el carrito'
 );
 
--- No-stackable excluye a las stackable: 3x2 (no combinable) + duo (combinable) en el mismo carrito -> solo el 3x2 aplica.
--- Se verifica por producto (nunca ninguna línea de PROD-NIAC/PROD-VITC queda
--- tagueada), no por conteo total de líneas tagueadas — ese conteo depende de
+-- Migración 66 (corrección de regla de negocio, auditada): dos promociones
+-- sobre PRODUCTOS DISTINTOS (3x2 sobre PROD-ESP, duo sobre PROD-NIAC/PROD-VITC
+-- — cero superposición) ahora CONVIVEN en la misma venta, sin importar
+-- `stackable` — antes (hasta 20260201000064 inclusive), el 3x2 no-stackable
+-- anulaba al duo por completo aunque no hubiera ninguna contienda real.
+-- Se verifica por producto (ambas líneas de PROD-NIAC/PROD-VITC quedan
+-- tagueadas), no por conteo total de líneas tagueadas — ese conteo depende de
 -- cuántas líneas produce el 3x2 internamente (2 desde la migración 64: qty=3
 -- es múltiplo exacto de group_size=3, sin excedente — gratis + pagas-en-grupo,
 -- ambas tagueadas), que es un detalle interno ajeno a lo que este test
@@ -171,8 +175,8 @@ select is(
         (select id from products where sku = 'PROD-NIAC'), (select id from products where sku = 'PROD-VITC')
       )
   ),
-  0,
-  'No-stackable (3x2) excluye a la stackable (duo) cuando ambas matchean el mismo carrito — ninguna línea de duo queda tagueada'
+  2,
+  'Promociones sobre productos distintos (3x2 no-stackable + duo) conviven — ambas líneas de duo quedan tagueadas'
 );
 
 select * from finish();

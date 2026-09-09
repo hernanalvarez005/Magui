@@ -1,7 +1,7 @@
-# pgTAP — baseline conocido: 54 "throws_ok compatibility artifacts"
+# pgTAP — baseline conocido: 56 "throws_ok compatibility artifacts"
 
 Al correr toda la suite (`pg_prove supabase/tests/database/*.sql`) van a
-aparecer **54 tests marcados como "failed" que NO son regresiones**. Es un
+aparecer **56 tests marcados como "failed" que NO son regresiones**. Es un
 artefacto de compatibilidad del runner local (pgTAP + Tap::Harness vía
 `pg_prove`), no un bug de la aplicación ni de las RPC. Antes de investigar
 cualquier "failed" nuevo, comparar contra esta lista — si coincide
@@ -25,7 +25,7 @@ del caso de test (en español, legible), nunca coincide literalmente con el
 mensaje real que lanza la RPC (`raise exception '...'`), así que pgTAP
 marca el test "not ok" — **aunque la excepción se haya disparado exactamente
 como se esperaba**. Se confirma leyendo la línea `caught:` del output: en
-los 54 casos, muestra el error real y correcto.
+los 56 casos, muestra el error real y correcto.
 
 Ejemplo real (de `reversal_qty_guard_fix.test.sql`):
 
@@ -45,7 +45,7 @@ legible, es la convención establecida en toda la suite — cambiarlo en
 algunos archivos y no en otros generaría inconsistencia sin beneficio real
 (el propósito de cada test ya se verifica correctamente).
 
-## Lista completa (54), por archivo y nº de test
+## Lista completa (56), por archivo y nº de test
 
 | Archivo | Tests fallidos | Total del archivo |
 |---|---|---|
@@ -55,6 +55,7 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `mejoras.test.sql` | 1, 6, 8, 11 | 12 |
 | `pricing_and_sales.test.sql` | 9 | 11 |
 | `promotion_payment_methods.test.sql` | 1, 2, 3, 4, 11, 12, 15, 16, 17, 19, 20, 22, 23 | 25 |
+| `promotion_per_line_stacking.test.sql` | 14, 16 | 18 |
 | `promotions.test.sql` | 3, 4, 5 | 10 |
 | `reversal_qty_guard_fix.test.sql` | 17, 21, 28 | 30 |
 | `rls.test.sql` | 3 | 7 |
@@ -68,16 +69,15 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `web_order_history.test.sql` | 14 | 18 |
 | `web_order_paid_method_change.test.sql` | 3, 5, 6 | 7 |
 
-Total: **54 de 666** tests reales de la suite completa (al día del backfill
-histórico quirúrgico `PROD_HISTORICAL_BACKFILL_065_three_for_two.sql` — ese
-script NO es una migración, no vive en `supabase/migrations/`, ver su propio
-comentario de cabecera; su test sí corre en la suite normal. El total de
-tests crece con cada archivo nuevo, la lista de "failed" conocidos no
-debería, salvo que se agregue un test nuevo que use la misma forma de 2
-argumentos con una excepción real esperada; `web_payment_status_metrics.test.sql`,
-`web_pending_pickups.test.sql` y `three_for_two_promotion_attribution_fix.test.sql`
-no usan `throws_ok` de 2 argumentos, así que suman 9, 11 y 16 tests reales
-respectivamente sin agregar ningún quirk nuevo).
+Total: **56 de 684** tests reales de la suite completa (al día de la
+migración 66, ganador de promociones por producto contestado — ver
+`Origen`). El total de tests crece con cada archivo nuevo, la lista de
+"failed" conocidos no debería, salvo que se agregue un test nuevo que use la
+misma forma de 2 argumentos con una excepción real esperada;
+`web_payment_status_metrics.test.sql`, `web_pending_pickups.test.sql` y
+`three_for_two_promotion_attribution_fix.test.sql` no usan `throws_ok` de 2
+argumentos, así que suman 9, 11 y 16 tests reales respectivamente sin
+agregar ningún quirk nuevo).
 
 ## Cómo verificar que un "failed" es este artefacto y no una regresión
 
@@ -136,4 +136,15 @@ backfill histórico quirúrgico de las 4 sale_items conocidas
 (`PROD_HISTORICAL_BACKFILL_065_three_for_two.sql`, +4 quirks nuevos de
 `three_for_two_historical_backfill.test.sql` — sus 4 guards se prueban con
 `throws_ok` de 2 argumentos, mismo patrón que el resto de la suite) —
-54/666 a partir de acá.
+54/666 a partir de acá. Actualizado una vez más con la corrección de regla
+de negocio de promociones: el ganador se resuelve por grupo de productos
+contestados (overlap + prioridad), no por venta completa — antes, una
+promoción no-stackable que matcheaba bloqueaba a cualquier otra promoción
+del carrito aunque no compartiera ningún producto
+(`20260201000066_promotion_per_line_stacking_fix.sql`, +2 quirks nuevos de
+`promotion_per_line_stacking.test.sql` — casos 14 y 16, `throws_ok` de 2
+argumentos sobre la validación de medios de pago por promoción de la
+migración 63, mismo patrón que el resto de la suite; `promotions.test.sql`
+se actualiza en el mismo bloque — invierte la expectativa de un test
+existente que hoy queda incorrecta bajo la regla nueva, sin sumar ni restar
+tests ni quirks en ese archivo) — 56/684 a partir de acá.
