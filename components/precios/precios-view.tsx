@@ -44,14 +44,17 @@ interface PromotionProductLite {
 }
 
 // Mismo orden/columnas que la sección 6 del pedido. Ver comentario en
-// page.tsx sobre por qué son estas 5 y no las 6 que muestra Administración.
-const DISPLAY_CODES = ["LIST", "CASH", "TRANSFER", "CARD_1", "INSTALLMENTS_3"];
+// page.tsx sobre por qué son estas condiciones y no todas las que muestra
+// Administración. Migración 67: INSTALLMENTS_6 (6 cuotas sin interés)
+// agregada al final — mismo criterio que INSTALLMENTS_3.
+const DISPLAY_CODES = ["LIST", "CASH", "TRANSFER", "CARD_1", "INSTALLMENTS_3", "INSTALLMENTS_6"];
 const CONDITION_LABELS: Record<string, string> = {
   LIST: "Lista",
   CASH: "Efectivo",
   TRANSFER: "Transferencia",
   CARD_1: "1 pago",
   INSTALLMENTS_3: "3 cuotas",
+  INSTALLMENTS_6: "6 cuotas",
 };
 const TYPE_LABEL: Record<string, string> = { product: "Producto", kit: "Kit", accessory: "Accesorio" };
 const PROMO_TYPE_LABEL: Record<PromotionType, string> = {

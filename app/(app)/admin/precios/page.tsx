@@ -8,7 +8,15 @@ export const metadata: Metadata = { title: "Precios" };
 // QTY_2/QTY_3_PLUS ya no aparecen acá: la query de abajo solo trae condiciones
 // active=true, y esas dos quedaron desactivadas (migraron a Promociones,
 // tipo QUANTITY_DISCOUNT — ver 20260201000046_quantity_discount_deactivate_legacy.sql).
-const CONDITION_ORDER = ["LIST", "TRANSFER", "CASH", "INSTALLMENTS_3"];
+//
+// BUGFIX 67: CARD_1 no estaba en esta lista desde que se agregó
+// (20260201000007) — como el comparador usa indexOf (que da -1 para lo que
+// no está en el array), CARD_1 ordenaba SIEMPRE PRIMERO, antes de "Lista",
+// por accidente (-1 < cualquier índice real). Orden final, explícito,
+// alineado con el mismo orden que ya usaba /precios (DISPLAY_CODES en
+// precios-view.tsx): Lista, Efectivo, Transferencia, 1 pago, 3 cuotas,
+// 6 cuotas — ninguna condición activa queda fuera de la lista.
+const CONDITION_ORDER = ["LIST", "CASH", "TRANSFER", "CARD_1", "INSTALLMENTS_3", "INSTALLMENTS_6"];
 
 export default async function AdminPricesPage() {
   const supabase = await createClient();

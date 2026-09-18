@@ -24,6 +24,7 @@ export interface CustomerOption {
   full_name: string;
   dni: string | null;
   whatsapp: string | null;
+  email: string | null;
 }
 
 /**
@@ -61,7 +62,7 @@ export function CustomerPickerFields({
   const [results, setResults] = useState<CustomerOption[]>([]);
   const [searching, setSearching] = useState(false);
 
-  const [form, setForm] = useState({ full_name: "", whatsapp: "" });
+  const [form, setForm] = useState({ full_name: "", whatsapp: "", email: "" });
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -81,7 +82,7 @@ export function CustomerPickerFields({
       const supabase = createClient();
       const { data } = await supabase
         .from("customers")
-        .select("id, full_name, dni, whatsapp")
+        .select("id, full_name, dni, whatsapp, email")
         .eq("active", true)
         .eq("dni", normalized)
         .maybeSingle();
@@ -110,7 +111,7 @@ export function CustomerPickerFields({
     const supabase = createClient();
     const { data } = await supabase
       .from("customers")
-      .select("id, full_name, dni, whatsapp")
+      .select("id, full_name, dni, whatsapp, email")
       .eq("active", true)
       .or(`full_name.ilike.%${value}%,dni.ilike.%${value}%,whatsapp.ilike.%${value}%`)
       .limit(10);
@@ -124,6 +125,7 @@ export function CustomerPickerFields({
       full_name: form.full_name,
       dni: normalizeDni(dni),
       whatsapp: form.whatsapp,
+      email: form.email,
     });
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? "Datos inválidos.");
@@ -137,8 +139,9 @@ export function CustomerPickerFields({
           full_name: parsed.data.full_name,
           dni: parsed.data.dni || null,
           whatsapp: parsed.data.whatsapp || null,
+          email: parsed.data.email || null,
         })
-        .select("id, full_name, dni, whatsapp")
+        .select("id, full_name, dni, whatsapp, email")
         .single();
 
       if (error) {
@@ -232,7 +235,7 @@ export function CustomerPickerFields({
           </div>
           <p className="text-sm">{found.full_name}</p>
           <p className="text-xs text-muted-foreground">
-            {[found.dni ? `DNI ${found.dni}` : null, found.whatsapp].filter(Boolean).join(" · ")}
+            {[found.dni ? `DNI ${found.dni}` : null, found.whatsapp, found.email].filter(Boolean).join(" · ")}
           </p>
           <Button type="button" onClick={() => onSelect(found)}>
             Usar este cliente
@@ -259,6 +262,15 @@ export function CustomerPickerFields({
               id="whatsapp"
               value={form.whatsapp}
               onChange={(e) => setForm((f) => ({ ...f, whatsapp: e.target.value }))}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="email">Email (opcional)</Label>
+            <Input
+              id="email"
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
             />
           </div>
           <Button type="button" onClick={handleCreate} disabled={isPending}>
