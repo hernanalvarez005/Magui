@@ -51,6 +51,7 @@ const PAYMENT_ICONS: Record<string, React.ElementType> = {
   TRANSFER: Landmark,
   CARD_3: CreditCard,
   CARD_1: CreditCard,
+  CARD_6: CreditCard,
 };
 
 type Step = "dni" | "sales" | "detail" | "new-item" | "confirm" | "success";

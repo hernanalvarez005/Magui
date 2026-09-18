@@ -6,13 +6,14 @@ import { PreciosView } from "@/components/precios/precios-view";
 
 export const metadata: Metadata = { title: "Precios" };
 
-// Mismas 5 condiciones pedidas para esta pantalla (sección 6 del pedido),
+// Mismas condiciones pedidas para esta pantalla (sección 6 del pedido),
 // en el orden que pide el mockup — es solo el orden de columnas de ESTA
 // vista, no reemplaza ni duplica el orden que usa Administración → Precios
 // (que muestra todas las condiciones, incluidas QTY_2/QTY_3_PLUS, que acá
 // no aportan valor porque no son "el precio de este producto" sino un
-// descuento por cantidad).
-const DISPLAY_CODES = ["LIST", "CASH", "TRANSFER", "CARD_1", "INSTALLMENTS_3"];
+// descuento por cantidad). Migración 67: INSTALLMENTS_6 (6 cuotas sin
+// interés) agregada al final — mismo criterio que INSTALLMENTS_3.
+const DISPLAY_CODES = ["LIST", "CASH", "TRANSFER", "CARD_1", "INSTALLMENTS_3", "INSTALLMENTS_6"];
 
 export default async function PreciosPage() {
   const supabase = await createClient();
