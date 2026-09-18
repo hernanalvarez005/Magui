@@ -63,10 +63,11 @@ describe("computeRequiresPaymentAccountNow", () => {
 });
 
 describe("paymentMethodRequiresBilling", () => {
-  it("Transferencia/1 pago/3 cuotas facturan", () => {
+  it("Transferencia/1 pago/3 cuotas/6 cuotas facturan", () => {
     expect(paymentMethodRequiresBilling("TRANSFER")).toBe(true);
     expect(paymentMethodRequiresBilling("CARD_1")).toBe(true);
     expect(paymentMethodRequiresBilling("CARD_3")).toBe(true);
+    expect(paymentMethodRequiresBilling("CARD_6")).toBe(true);
   });
   it("Efectivo no factura", () => {
     expect(paymentMethodRequiresBilling("CASH")).toBe(false);

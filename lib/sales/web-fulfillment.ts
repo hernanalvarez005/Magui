@@ -60,9 +60,11 @@ export function computeRequiresPaymentAccountNow(params: {
  * / mark_web_order_paid en el backend usan exactamente esta misma lista —
  * ver 20260201000057). Centralizado acá para no repetir el array en cada
  * pantalla que necesita la misma regla (Nueva Venta, el diálogo de cobro de
- * Notificaciones en BLOQUE D).
+ * Notificaciones en BLOQUE D). Migración 67: CARD_6 (6 cuotas sin interés)
+ * agregado — se factura exactamente igual que las demás tarjetas/cuotas
+ * (mismo `in (...)` agregado en fn_create_sale_core/create_sale_exchange).
  */
-export const PAYMENT_METHOD_CODES_REQUIRING_BILLING = ["TRANSFER", "CARD_1", "CARD_3"] as const;
+export const PAYMENT_METHOD_CODES_REQUIRING_BILLING = ["TRANSFER", "CARD_1", "CARD_3", "CARD_6"] as const;
 
 export function paymentMethodRequiresBilling(code: string | null | undefined): boolean {
   return !!code && (PAYMENT_METHOD_CODES_REQUIRING_BILLING as readonly string[]).includes(code);
