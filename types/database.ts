@@ -776,6 +776,12 @@ export type DoctorSalesDetail = {
     total: number;
     commission_total: number;
     location: string;
+    /** Migración 68 — base comisionable neta de ESTA venta (no el total de la venta). */
+    commissionable_revenue: number;
+    /** Migración 68 — % histórico efectivo de ESTA venta (commission_total / gross_commissionable original, nunca el % actual de la doctora). */
+    effective_commission_percent: number;
+    /** Migración 68 — solo productos commissionable=true de ESTA venta, splits de promoción consolidados, kits sin explotar. */
+    products: { name: string; quantity: number }[];
   }[];
 };
 

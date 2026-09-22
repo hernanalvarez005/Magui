@@ -70,15 +70,16 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `web_order_history.test.sql` | 14 | 18 |
 | `web_order_paid_method_change.test.sql` | 3, 5, 6 | 7 |
 
-Total: **62 de 711** tests reales de la suite completa (al día de la
-migración 67, CARD_6/INSTALLMENTS_6 — ver `Origen`). El total de tests
-crece con cada archivo nuevo, la lista de "failed" conocidos no debería,
-salvo que se agregue un test nuevo que use la misma forma de 2 argumentos
-con una excepción real esperada; `web_payment_status_metrics.test.sql`,
-`web_pending_pickups.test.sql`, `three_for_two_promotion_attribution_fix.test.sql`
-y `customer_email.test.sql` no usan `throws_ok` de 2 argumentos, así que
-suman 9, 11, 16 y 4 tests reales respectivamente sin agregar ningún quirk
-nuevo).
+Total: **62 de 725** tests reales de la suite completa (al día de la
+migración 68, campos aditivos de PDF en doctor_sales_detail — ver `Origen`).
+El total de tests crece con cada archivo nuevo, la lista de "failed"
+conocidos no debería, salvo que se agregue un test nuevo que use la misma
+forma de 2 argumentos con una excepción real esperada;
+`web_payment_status_metrics.test.sql`, `web_pending_pickups.test.sql`,
+`three_for_two_promotion_attribution_fix.test.sql`, `customer_email.test.sql`
+y `doctor_sales_detail_pdf_fields.test.sql` no usan `throws_ok` de 2
+argumentos, así que suman 9, 11, 16, 4 y 14 tests reales respectivamente sin
+agregar ningún quirk nuevo).
 
 ## Cómo verificar que un "failed" es este artefacto y no una regresión
 
@@ -158,4 +159,8 @@ venta sin cliente identificado, venta sin cuenta de ingreso, y la
 regresión de Transferencia/CARD_1/CARD_3), mismo patrón que el resto de la
 suite; `customer_email.test.sql` (Cambio 1, email opcional — reuso de
 `customers.email` existente, sin migración nueva) no usa `throws_ok`, así
-que no agrega quirks) — 62/711 a partir de acá.
+que no agrega quirks) — 62/711 a partir de acá. Actualizado una vez más con
+los campos aditivos de doctor_sales_detail para Comisiones por Dra. →
+Exportar PDF (`20260201000068_doctor_sales_detail_pdf_fields.sql`,
+`doctor_sales_detail_pdf_fields.test.sql`, 14 casos, ninguno `throws_ok` —
+no agrega quirks) — 62/725 a partir de acá.
