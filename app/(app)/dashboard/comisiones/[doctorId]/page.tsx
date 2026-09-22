@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
 
 import { getCurrentProfile } from "@/lib/auth/get-profile";
 import { createClient } from "@/lib/supabase/server";
@@ -54,19 +54,36 @@ export default async function DoctorSalesDetailPage(props: PageProps<"/dashboard
 
   const data = report as DoctorSalesDetail | null;
   const basePath = `/dashboard/comisiones/${doctorId}`;
+  const exportParams = new URLSearchParams({ from, to, ...(locationId ? { location: locationId } : {}) });
+  const hasCommissionableSales = (data?.sales.length ?? 0) > 0;
 
   return (
     <div className="flex flex-col gap-5 p-4 md:p-6">
-      <div>
-        <Button variant="ghost" size="sm" asChild className="-ml-2">
-          <Link href="/dashboard/comisiones">
-            <ArrowLeft /> Comisiones por doctora
-          </Link>
-        </Button>
-        <h1 className="text-xl font-semibold">{data?.doctor.full_name ?? "Detalle por médica"}</h1>
-        <p className="text-sm text-muted-foreground">
-          {from} — {to}. Usa la comisión ya registrada en cada venta, no el % actual de la doctora.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <Button variant="ghost" size="sm" asChild className="-ml-2">
+            <Link href="/dashboard/comisiones">
+              <ArrowLeft /> Comisiones por doctora
+            </Link>
+          </Button>
+          <h1 className="text-xl font-semibold">{data?.doctor.full_name ?? "Detalle por médica"}</h1>
+          <p className="text-sm text-muted-foreground">
+            {from} — {to}. Usa la comisión ya registrada en cada venta, no el % actual de la doctora.
+          </p>
+        </div>
+        {data ? (
+          hasCommissionableSales ? (
+            <Button variant="outline" asChild>
+              <a href={`/api/export/comisiones-doctora/${doctorId}/pdf?${exportParams.toString()}`}>
+                <Download /> Exportar PDF
+              </a>
+            </Button>
+          ) : (
+            <Button variant="outline" disabled title="No hay comisiones para exportar en el período seleccionado.">
+              <Download /> Exportar PDF
+            </Button>
+          )
+        ) : null}
       </div>
 
       <DashboardFilters locations={locations ?? []} channels={[]} basePath={basePath} />
