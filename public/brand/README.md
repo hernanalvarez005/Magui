@@ -15,13 +15,15 @@ Mientras no estén estos archivos, la app sigue funcionando con el
 monograma genérico anterior (una "M" en un cuadrado de color) — no hay
 ningún error ni pantalla rota por su ausencia.
 
-## `wordmark-hero.png` (exploración "V1 Elegante", rama claude/magui-v1-elegante-ui)
+## `mark-white.png` (exploración "V1 Elegante", rama claude/magui-v1-elegante-ui)
 
-Lockup horizontal (MR + "MAGUI REJUVE", 594×424, fondo transparente) usado
-en `components/dashboard/dashboard-hero.tsx`. Recortado y con el blanco de
-fondo convertido a transparencia a partir del isotipo oficial cuadrado que
-compartió el usuario — mismo trazo/color, sin el espacio en blanco
-sobrante. Si se reemplaza `logo.png`/`mark.png` por una versión más
-reciente de la marca, conviene regenerar también este archivo con el mismo
-criterio (recorte ajustado al contenido + fondo transparente) en vez de
-dejarlo desactualizado.
+Variante 100% blanca de `mark.png` (604×604, fondo transparente), usada por
+`<Logo variant="mark-white">` en el sidebar oscuro y en el hero del
+Dashboard (`components/dashboard/dashboard-hero.tsx`) — ambas superficies
+oscuras donde el monograma navy original no tendría contraste. Generada a
+partir del canal alfa real de `mark.png` (mismo trazo exacto, RGB
+reemplazado por blanco puro) — deliberadamente NO es un `filter: invert()`
+en CSS, que hubiera invertido el navy hacia un tono amarillento en vez de
+blanco. `mark.png` nunca se modificó. Si se reemplaza `mark.png` por una
+versión más reciente de la marca, regenerar `mark-white.png` con el mismo
+criterio en vez de dejarlo desactualizado.

@@ -73,7 +73,7 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
     <div className="flex flex-col gap-5 p-4 md:p-6">
       {/* V1 Elegante (rama claude/magui-v1-elegante-ui): banner puramente
           visual, sin queries ni lógica propia — ver dashboard-hero.tsx. */}
-      <DashboardHero fullName={profile.fullName} />
+      <DashboardHero fullName={profile.fullName} from={from} to={to} />
 
       <div className="flex flex-wrap items-center justify-end gap-2">
         <Button variant="outline" size="sm" asChild>

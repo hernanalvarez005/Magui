@@ -12,6 +12,15 @@ const SIZES = {
   full: { width: 220, height: 220 },
 } as const;
 
+const SOURCES = {
+  mark: "/brand/mark.png",
+  full: "/brand/logo.png",
+  // V1 Elegante (rama claude/magui-v1-elegante-ui): variantes blancas,
+  // derivadas de mark.png/logo.png preservando su canal alfa original
+  // (mismo trazo, sin invert) — para el sidebar oscuro y el hero.
+  "mark-white": "/brand/mark-white.png",
+} as const;
+
 /**
  * Logo de Magui Rejuve. Busca los archivos reales en public/brand/ (mark.png
  * para el ícono cuadrado, logo.png para el isotipo completo con texto) — si
@@ -23,17 +32,31 @@ export function Logo({
   variant = "mark",
   className,
 }: {
-  variant?: "mark" | "full";
+  variant?: "mark" | "full" | "mark-white";
   className?: string;
 }) {
   const [errored, setErrored] = useState(false);
-  const { width, height } = SIZES[variant];
+  const { width, height } = SIZES[variant === "mark-white" ? "mark" : variant];
 
   if (errored) {
     // Antes de subir el archivo real, mismo monograma genérico "M" que ya
     // existía — en "full" además se acompaña con el texto, para no perder
     // el nombre de la marca mientras tanto (el isotipo real ya trae el
-    // texto incorporado, este fallback no).
+    // texto incorporado, este fallback no). "mark-white" cae al mismo
+    // fallback en blanco sobre el carbón del sidebar, nunca al monograma
+    // con fondo --primary (ilegible sobre un fondo ya oscuro).
+    if (variant === "mark-white") {
+      return (
+        <div
+          className={cn(
+            "flex items-center justify-center rounded-xl border border-white/30 font-serif text-white",
+            className
+          )}
+        >
+          M
+        </div>
+      );
+    }
     return variant === "full" ? (
       <div className={cn("flex flex-col items-center gap-2", className)}>
         <div className="flex size-14 items-center justify-center rounded-2xl bg-primary text-2xl font-serif text-primary-foreground">
@@ -55,7 +78,7 @@ export function Logo({
 
   return (
     <Image
-      src={variant === "full" ? "/brand/logo.png" : "/brand/mark.png"}
+      src={SOURCES[variant]}
       alt="Magui Rejuve"
       width={width}
       height={height}

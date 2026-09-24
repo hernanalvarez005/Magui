@@ -68,10 +68,12 @@ export function AppShell({
           --sidebar-* en globals.css. */}
       <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar md:flex">
         <div className="flex items-center gap-2.5 px-5 py-5">
-          <Logo variant="mark" className="size-9 rounded-xl" />
+          <Logo variant="mark-white" className="size-9 rounded-xl" />
           <div>
             <p className="text-sm font-semibold leading-tight text-sidebar-foreground">Magui Rejuve</p>
-            <p className="text-xs text-sidebar-muted-foreground">{locationLabel}</p>
+            {/* Metadato secundario — blanco con opacidad reducida, nunca un
+                gris de bajo contraste (pedido explícito del usuario). */}
+            <p className="text-xs text-sidebar-foreground/60">{locationLabel}</p>
           </div>
         </div>
         <nav className="flex flex-1 flex-col gap-1 px-3">
@@ -83,7 +85,7 @@ export function AppShell({
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                 isActive(pathname, item.href)
                   ? "bg-sidebar-primary/15 text-sidebar-primary"
-                  : "text-sidebar-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  : "text-sidebar-foreground/85 hover:bg-white/8 hover:text-sidebar-foreground"
               )}
             >
               <item.icon className="size-4.5 shrink-0" />
@@ -94,7 +96,7 @@ export function AppShell({
         <div className="border-t border-sidebar-border p-3">
           <button
             onClick={handleSignOut}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/85 transition-colors hover:bg-white/8 hover:text-sidebar-foreground"
           >
             <LogOut className="size-4.5" />
             Cerrar sesión
@@ -169,7 +171,7 @@ export function AppShell({
                 href={item.href}
                 className={cn(
                   "flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium",
-                  active ? "text-sidebar-primary" : "text-sidebar-muted-foreground"
+                  active ? "text-sidebar-primary" : "text-sidebar-foreground/75"
                 )}
               >
                 <item.icon className={cn("size-5", active && "fill-sidebar-primary/15")} />
