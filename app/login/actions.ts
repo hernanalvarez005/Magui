@@ -33,6 +33,18 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
   });
 
   if (error) {
+    // DIAGNÓSTICO TEMPORAL (rama claude/magui-v1-elegante-ui, solo local) —
+    // aislar por qué loginAction cae al mensaje genérico. Server-side only,
+    // nunca llega al navegador. Nunca loguea email/password/tokens/headers,
+    // solo la forma del error que Supabase Auth ya devolvía. Revertir una
+    // vez diagnosticado.
+    console.error("[login diagnóstico] Supabase Auth signInWithPassword error:", {
+      name: error.name,
+      message: error.message,
+      status: error.status,
+      code: "code" in error ? error.code : undefined,
+    });
+
     if (error.message.toLowerCase().includes("invalid login credentials")) {
       return { error: "Email o contraseña incorrectos." };
     }
