@@ -366,4 +366,47 @@ Las imágenes de producto (`products.image_url`) son URLs externas arbitrarias c
 
 ---
 
-*(Checkpoints 5-6 — Tests/fixtures/observabilidad/Supabase grants, e informe consolidado con priorización y roadmap — continúan en la próxima entrega de este mismo documento, dentro de esta misma rama.)*
+## Checkpoint 5 — Tests, fixtures, observabilidad, compatibilidad futura con Supabase
+
+### Reporte de tests — corrida real, no solo lectura del README
+
+Se reconstruyó `magui_test` desde cero (83 migraciones reales, sin ninguna modificación) y se corrieron ambas suites completas tal como las correría cualquier desarrollador local.
+
+**Nota de proceso — un hallazgo real en el tooling local, encontrado al reconstruir `magui_test`:** el script propio del repo, `scripts/rebuild_test_db.sh`, **falla silenciosamente** al llegar a la migración `20260201000026_product_display_order.sql` (que valida que existan exactamente 19 SKUs reales antes de aplicarse, y el script no siembra ningún producto antes de correr las migraciones). El script usa `set -euo pipefail`, lo que hace que bash aborte inmediatamente en cuanto el `psql` de esa migración falla — **antes** de llegar a su propio chequeo `if [ $? -ne 0 ]; then echo "FAILED at $f"; ...; fi` (código muerto: nunca se ejecuta bajo `set -e`). Resultado verificado empíricamente: el script termina con exit code 3 y **sin imprimir ningún mensaje de error**, dejando `magui_test` en un estado parcial (solo ~14 de 30 tablas/productos reales, migraciones posteriores a la #26 nunca aplicadas) que **parece** una reconstrucción exitosa si no se revisa el exit code manualmente.
+— **Clasificación: IMPLEMENTAR** (severidad baja — no afecta producción ni el runtime real, solo tooling de desarrollo local; pero es un hallazgo real y reproducible, no una suposición). Fix candidato (no implementado): sembrar los 19 SKUs esperados antes del loop de migraciones (mismo patrón ya usado en este audit vía `seed_026_skus.sql`), y/o separar la comprobación de error de `set -e` (ej. `set +e` alrededor de esa línea puntual, o `trap 'echo FAILED' ERR`).
+— **Este audit no usó `scripts/rebuild_test_db.sh`** para su propio trabajo — se usó el método ya establecido en bloques anteriores de este mismo proyecto (preamble + inyección de seed antes de la migración #26), que sí reconstruye las 83 migraciones completas sin errores.
+
+**pgTAP** (`pg_prove -d magui_test supabase/tests/database/*.sql`, extensión `pgtap` — no estaba instalada en la base recién creada, se agregó con `create extension if not exists pgtap` antes de correr, sin tocar producción):
+
+| Suite | Tests | Pass | Fail conocido | Skip | Entorno |
+|---|---|---|---|---|---|
+| pgTAP (44 archivos) | 725 | 663 | 62 | 0 | Local (`magui_test`, Postgres aislado) |
+| Vitest (15 archivos) | 159 | 159 | 0 | 0 | Local (`vitest run`) |
+
+**Los 62 "fallos" de pgTAP coinciden exactamente, archivo por archivo y número de test por número de test, con el baseline ya documentado en `supabase/tests/database/README.md`** (comparación hecha test por test contra esa tabla, no solo el total). Confirmado además en la salida cruda: cada uno de los 62 muestra `caught: <excepción real correcta>` / `wanted: an exception: <descripción en español>` — la excepción se lanzó exactamente como se esperaba, pgTAP solo compara mal el texto del 2º argumento de `throws_ok` (interpretado como el mensaje de error esperado, no como descripción libre) contra la descripción legible en español. **Es un QUIRK CONOCIDO, no un bug real** — cero regresiones nuevas encontradas en esta auditoría. **No se modificó ningún test para forzar verde**, conforme a la restricción explícita del pedido.
+
+**Vitest, ESLint y `tsc --noEmit`: los tres 100% limpios** (159/159, 0 errores, 0 errores respectivamente) sobre el estado real de `main` en esta rama.
+
+### Fixtures y limpieza
+
+La metodología de esta propia auditoría ya es el ejemplo del patrón correcto a seguir: todas las bases usadas (`magui_test` para pgTAP, `magui_audit` para el dataset sintético de Checkpoint 3) son bases Postgres **locales, aisladas, reconstruibles desde cero** en segundos/minutos a partir de las migraciones reales — nunca se sembró, limpió ni tocó ningún dato en producción en ningún punto de este trabajo. No se identificó, en el código de aplicación ni en las migraciones, ningún mecanismo de limpieza de fixtures que pudiera apuntar accidentalmente a producción (no hay scripts de seed/teardown en `package.json` que tomen una URL de base de datos como parámetro sin verificarla).
+— **Clasificación: VALIDADO — NO TOCAR.**
+
+### Observabilidad — gaps documentados, nada instalado
+
+Búsqueda en `package.json` y el código de: Sentry, Datadog, LogRocket, PostHog, `@vercel/analytics`, `@vercel/speed-insights` — **ninguno presente**. El único uso de `console.error`/`console.warn` en toda la app (`app/error.tsx`) es el manejo estándar del error boundary de Next.js, no instrumentación real.
+— **Gap real:** no hay ningún mecanismo de error tracking/APM/logging estructurado más allá de los logs efímeros de la función serverless (Vercel), que no son buscables ni alertables a mediano plazo tal como está hoy. Esto es especialmente relevante dado el hallazgo de `dashboard_report` (Checkpoint 3): sin observabilidad real, una degradación de performance en producción (o un timeout de función) no generaría ninguna alerta — recién se notaría cuando un usuario se queje.
+— **Clasificación: NO MEDIDO / gap documentado.** Conforme al pedido explícito ("documentar gaps de observabilidad, no instalar servicios"), no se instaló ni configuró ninguna herramienta — queda como recomendación para el roadmap (Checkpoint 6), no como acción de esta fase.
+
+### Compatibilidad futura con Supabase — GRANTs
+
+Supabase dejó de otorgar privilegios implícitos amplios a `anon`/`authenticated` sobre tablas nuevas en proyectos recientes, exigiendo GRANTs explícitos. Se auditaron las 83 migraciones reales:
+
+- `supabase/migrations/20260101000010_rls.sql:38-45` establece el patrón, con su propio comentario explicándolo: `grant select, insert, update, delete on all tables in schema public to authenticated` + `alter default privileges in schema public grant select, insert, update, delete on tables to authenticated` (y el equivalente `all` para `service_role`). Esto significa que **toda tabla nueva creada en cualquier migración posterior hereda automáticamente estos privilegios**, sin necesitar su propio `GRANT` — confirmado empíricamente: `has_table_privilege('authenticated', <tabla>, 'SELECT')` da `true` para las 30 tablas reales de `public`, incluidas las creadas en migraciones muy posteriores a la #10.
+- **`anon` no recibe ningún privilegio** — ni siquiera `usage on schema public` — consistente con que toda la app exige sesión autenticada (confirmado en Checkpoints 1/4: `proxy.ts` redirige a `/login` cualquier ruta no pública).
+- Los privilegios de tabla (`GRANT`) son deliberadamente amplios a nivel de rol (`authenticated` puede en principio `INSERT`/`UPDATE`/`DELETE` sobre cualquier tabla) — la autorización real, fila por fila y operación por operación, la hace RLS: una tabla sin policy de `INSERT` para un rol queda bloqueada para esa operación aunque el `GRANT` lo permitiría, tal como el propio comentario de la migración lo explica. Esto es el patrón estándar recomendado por Supabase, no un descuido.
+— **Clasificación: VALIDADO — NO TOCAR.** El proyecto ya es compatible con el modelo de GRANTs explícitos de Supabase (lo implementa desde su migración más temprana, no depende de ningún privilegio implícito heredado de un proyecto viejo) y sigue el principio de mínimo privilegio real (`anon` con cero acceso, autorización real vía RLS). No se propuso ni se necesitó agregar ningún GRANT nuevo.
+
+---
+
+*(Checkpoint 6 — informe consolidado, tabla de priorización y roadmap final — continúa en la próxima entrega de este mismo documento, dentro de esta misma rama.)*
