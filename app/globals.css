@@ -7,6 +7,13 @@
   Sistema visual Maguirejuve — clínica estética: claro, elegante, mucho aire,
   tipografía legible. Paleta neutra cálida + acento "clay" (rosado terroso).
   Pensado para poder reemplazarse por branding real cambiando solo estas variables.
+
+  EXPLORACIÓN "V1 — Elegante" (rama claude/magui-v1-elegante-ui, no producción):
+  paleta ajustada a partir de la maqueta de referencia — bordó/carbón cálido,
+  rosa empolvado, crema, verde salvia, gris neutro. El área operativa
+  (fondo/cards/texto) se mantiene clara — el cambio de identidad más fuerte
+  vive en los tokens --sidebar-* de más abajo, para un sidebar oscuro sin
+  oscurecer el resto de la app.
 */
 :root {
   --radius: 0.75rem;
@@ -29,14 +36,19 @@
   --muted: oklch(0.96 0.01 60);
   --muted-foreground: oklch(0.5 0.02 40);
 
-  --accent: oklch(0.93 0.03 40);
-  --accent-foreground: oklch(0.3 0.05 30);
+  /* Rosa empolvado — antes un neutro casi sin tinte (chroma 0.03), ahora un
+     acento cálido explícito propio de la dirección "V1 Elegante". */
+  --accent: oklch(0.9 0.035 25);
+  --accent-foreground: oklch(0.32 0.06 25);
 
   --destructive: oklch(0.55 0.19 25);
   --destructive-foreground: oklch(0.98 0.004 75);
 
-  --success: oklch(0.6 0.13 150);
-  --success-foreground: oklch(0.98 0.01 150);
+  /* Verde salvia (antes un verde "success" genérico, chroma 0.13/hue 150) —
+     mismo rol semántico (estados positivos), tono desaturado hacia oliva
+     para que combine con la paleta cálida en vez de leer como verde de app. */
+  --success: oklch(0.58 0.07 140);
+  --success-foreground: oklch(0.98 0.01 140);
 
   --warning: oklch(0.75 0.14 75);
   --warning-foreground: oklch(0.25 0.05 75);
@@ -44,6 +56,21 @@
   --border: oklch(0.9 0.01 60);
   --input: oklch(0.9 0.01 60);
   --ring: oklch(0.47 0.11 25 / 0.5);
+
+  /* Sidebar — carbón cálido, deliberadamente oscuro incluso en tema claro
+     (decisión del usuario: sidebar oscuro sobre área operativa clara,
+     independiente del modo claro/oscuro general de la app). Valores
+     reutilizados 1:1 de los que ya usa .dark más abajo para
+     background/foreground/muted — ya están probados para buen contraste
+     sobre un fondo carbón, no son un cálculo nuevo. */
+  --sidebar: oklch(0.19 0.015 40);
+  --sidebar-foreground: oklch(0.95 0.005 75);
+  --sidebar-muted-foreground: oklch(0.68 0.02 60);
+  --sidebar-primary: oklch(0.72 0.1 30);
+  --sidebar-primary-foreground: oklch(0.18 0.02 40);
+  --sidebar-accent: oklch(0.26 0.02 40);
+  --sidebar-accent-foreground: oklch(0.95 0.005 75);
+  --sidebar-border: oklch(0.28 0.02 40);
 }
 
 .dark {
@@ -71,8 +98,8 @@
   --destructive: oklch(0.6 0.19 25);
   --destructive-foreground: oklch(0.98 0.004 75);
 
-  --success: oklch(0.65 0.14 150);
-  --success-foreground: oklch(0.15 0.02 150);
+  --success: oklch(0.62 0.08 140);
+  --success-foreground: oklch(0.15 0.02 140);
 
   --warning: oklch(0.75 0.14 75);
   --warning-foreground: oklch(0.2 0.04 75);
@@ -80,6 +107,18 @@
   --border: oklch(0.32 0.02 40);
   --input: oklch(0.32 0.02 40);
   --ring: oklch(0.72 0.1 30 / 0.5);
+
+  /* Sidebar en modo oscuro general: ya es carbón por diseño, se mantiene
+     igual que en :root — no hay un segundo "más oscuro todavía" que tenga
+     sentido visual acá. */
+  --sidebar: oklch(0.19 0.015 40);
+  --sidebar-foreground: oklch(0.95 0.005 75);
+  --sidebar-muted-foreground: oklch(0.68 0.02 60);
+  --sidebar-primary: oklch(0.72 0.1 30);
+  --sidebar-primary-foreground: oklch(0.18 0.02 40);
+  --sidebar-accent: oklch(0.26 0.02 40);
+  --sidebar-accent-foreground: oklch(0.95 0.005 75);
+  --sidebar-border: oklch(0.28 0.02 40);
 }
 
 @theme inline {
@@ -107,6 +146,15 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted-foreground: var(--sidebar-muted-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+
   --radius-sm: calc(var(--radius) - 0.35rem);
   --radius-md: calc(var(--radius) - 0.15rem);
   --radius-lg: var(--radius);
@@ -114,6 +162,10 @@
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  /* Serif editorial — SOLO para hero/títulos de marca (ver app-shell.tsx
+     hero y dashboard-hero.tsx en Fase 2). Nunca para tablas/formularios:
+     la interfaz operativa sigue siendo --font-sans en todos lados. */
+  --font-serif: var(--font-fraunces);
 }
 
 @layer base {

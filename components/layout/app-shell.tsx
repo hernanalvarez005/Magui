@@ -63,13 +63,15 @@ export function AppShell({
 
   return (
     <div className="flex min-h-screen w-full">
-      {/* Sidebar desktop */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-card md:flex">
+      {/* Sidebar desktop — "V1 Elegante": carbón cálido, oscuro por diseño
+          (independiente del modo claro/oscuro general de la app), ver
+          --sidebar-* en globals.css. */}
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar md:flex">
         <div className="flex items-center gap-2.5 px-5 py-5">
           <Logo variant="mark" className="size-9 rounded-xl" />
           <div>
-            <p className="text-sm font-semibold leading-tight">Magui Rejuve</p>
-            <p className="text-xs text-muted-foreground">{locationLabel}</p>
+            <p className="text-sm font-semibold leading-tight text-sidebar-foreground">Magui Rejuve</p>
+            <p className="text-xs text-sidebar-muted-foreground">{locationLabel}</p>
           </div>
         </div>
         <nav className="flex flex-1 flex-col gap-1 px-3">
@@ -80,8 +82,8 @@ export function AppShell({
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                 isActive(pathname, item.href)
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  ? "bg-sidebar-primary/15 text-sidebar-primary"
+                  : "text-sidebar-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               )}
             >
               <item.icon className="size-4.5 shrink-0" />
@@ -89,10 +91,10 @@ export function AppShell({
             </Link>
           ))}
         </nav>
-        <div className="border-t border-border p-3">
+        <div className="border-t border-sidebar-border p-3">
           <button
             onClick={handleSignOut}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
           >
             <LogOut className="size-4.5" />
             Cerrar sesión
@@ -154,8 +156,9 @@ export function AppShell({
 
         <main className="flex-1 pb-20 md:pb-6">{children}</main>
 
-        {/* Bottom tab bar mobile */}
-        <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 grid border-t border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 md:hidden"
+        {/* Bottom tab bar mobile — mismo rol de navegación principal que el
+            sidebar desktop, mismos tokens --sidebar-* por consistencia. */}
+        <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 grid border-t border-sidebar-border bg-sidebar/95 backdrop-blur supports-[backdrop-filter]:bg-sidebar/80 md:hidden"
           style={{ gridTemplateColumns: `repeat(${mobileItems.length}, minmax(0, 1fr))` }}
         >
           {mobileItems.map((item) => {
@@ -166,10 +169,10 @@ export function AppShell({
                 href={item.href}
                 className={cn(
                   "flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium",
-                  active ? "text-primary" : "text-muted-foreground"
+                  active ? "text-sidebar-primary" : "text-sidebar-muted-foreground"
                 )}
               >
-                <item.icon className={cn("size-5", active && "fill-primary/15")} />
+                <item.icon className={cn("size-5", active && "fill-sidebar-primary/15")} />
                 {item.label}
               </Link>
             );

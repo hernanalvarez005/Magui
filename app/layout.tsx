@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Fraunces, Geist, Geist_Mono } from "next/font/google";
 
 import { Toaster } from "@/components/ui/sonner";
 
@@ -13,6 +13,16 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+// Exploración "V1 Elegante" (rama claude/magui-v1-elegante-ui): serif
+// editorial solo para hero/títulos de marca puntuales — ver --font-serif en
+// globals.css. La interfaz operativa (tablas, formularios, datos) sigue
+// siendo Geist Sans en toda la app, sin excepciones.
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
+  subsets: ["latin"],
+  style: ["normal", "italic"],
 });
 
 export const metadata: Metadata = {
@@ -35,7 +45,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="es-AR" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html lang="es-AR" className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col bg-background text-foreground">
         {children}
         <Toaster />
