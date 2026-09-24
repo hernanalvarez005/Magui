@@ -409,4 +409,91 @@ Supabase dejó de otorgar privilegios implícitos amplios a `anon`/`authenticate
 
 ---
 
-*(Checkpoint 6 — informe consolidado, tabla de priorización y roadmap final — continúa en la próxima entrega de este mismo documento, dentro de esta misma rama.)*
+## Checkpoint 6 — Informe consolidado
+
+### A. Resumen ejecutivo
+
+Magui Rejuve V1 es, en su estado real medido (no supuesto), **confiable en los flujos financieros y de stock centrales, y estructuralmente sólida en concurrencia** — la numeración de venta y el descuento de stock usan patrones atómicos correctos (`INSERT ... ON CONFLICT` y `SELECT ... FOR UPDATE` respectivamente), confirmados leyendo el código fuente real de las RPCs, no supuestos. La suite de tests (725 pgTAP + 159 Vitest) corre limpia salvo un quirk cosmético ya documentado y sin ninguna regresión nueva encontrada en esta auditoría. La paginación real (`/ventas`, `/admin/facturacion`, `/stock/movimientos`) está bien implementada y se midió rápida hasta 800.000 ventas sintéticas.
+
+**El hallazgo más importante de toda la auditoría es de performance, no de corrección:** `dashboard_report` (la función que arma el Dashboard principal) escala linealmente pero con un factor de costo muy alto por una forma de consulta ineficiente (subconsultas correlacionadas repetidas 6-8 veces sobre el mismo rango de datos) — medido en **88 segundos** a un volumen sintético de 800.000 ventas, y ya en **~1 segundo** al volumen base asumido (8.000 ventas, sin dato real de producción disponible para confirmar si ese volumen ya es realista hoy). A 10x ese volumen base (80.000 ventas, un crecimiento plausible en pocos años), el tiempo medido (10.7s) ya supera timeouts típicos de funciones serverless — este es el riesgo real más concreto para la escalabilidad de la V1, con una ruta de solución ya identificada (no implementada) y sin necesidad de tocar ningún índice.
+
+El segundo grupo de hallazgos reales es de **exports financieros**: los tres export routes (ventas, detalle de ventas, movimientos de stock) truncan silenciosamente sin avisar al usuario si el volumen supera su límite fijo, y además construyen URLs (`.in()`) que **empíricamente fallan** (HTTP 431 medido localmente a partir de ~16.000-20.000 caracteres) muy por debajo del tamaño que esos mismos límites (2000-5000 filas) pueden generar (74.000-185.000 caracteres) — un riesgo real de exports que fallan o mienten por omisión, no solo de lentitud.
+
+No se encontró ningún problema de seguridad, RLS, ni de integridad de datos bajo concurrencia — los puntos que sí se revisaron a fondo (numeración de venta, stock, GRANTs de Supabase) están bien diseñados. Los riesgos de esta V1 son de **performance a escala** y de **robustez de exports**, no de corrección de negocio ni de seguridad.
+
+### B. Tabla de priorización
+
+| ID | Área | Hallazgo | Evidencia | Impacto | Esfuerzo | Riesgo | Estado |
+|---|---|---|---|---|---|---|---|
+| P1 | Exports | Truncamiento silencioso sin aviso al usuario (financiero) | `app/api/export/{ventas,detalle-ventas,movimientos}/route.ts` | Alto (subestimar facturación/stock real sin indicio) | S | Bajo (solo agregar detección + aviso) | IMPLEMENTAR |
+| P2 | Exports | `.in()` de hasta 5000 ids → URL de hasta ~185.000 caracteres, 431 medido desde ~16-20k | Checkpoint 2 sección 8 + prueba empírica local (Node/`fetch`) | Alto (export puede fallar directamente con volumen real) | M (RPC agregadora o `.in()` por lotes) | Medio (requiere nueva RPC o refactor de la ruta) | IMPLEMENTAR |
+| P3 | Dashboard/Reportes | `dashboard_report` — 88s@100x, 10.7s@10x, 983ms@1x (subconsultas correlacionadas repetidas 6-8 veces) | `pg_get_functiondef` completo + `EXPLAIN (ANALYZE,BUFFERS)` a 3 escalas, Checkpoint 3 | Alto (riesgo de timeout/UX inutilizable a escala) | L (rediseño de la función, requiere prueba de regresión financiera cuidadosa) | Medio-Alto (lógica financiera real, tocar con cuidado) | IMPLEMENTAR |
+| P4 | Reportes | `doctor_sales_detail` (7.7s@100x) y `product_revenue_report` (11.4s@100x), misma causa raíz que P3 | `EXPLAIN (ANALYZE,BUFFERS)`, Checkpoint 3 | Medio (uso menos frecuente que el Dashboard) | M | Medio | IMPLEMENTAR |
+| P5 | Auth | `getUser()` duplicado por navegación (middleware + `getCurrentProfile()`) | `lib/supabase/proxy.ts:43` + `lib/auth/get-profile.ts:43`, Checkpoint 4 | Medio (latencia agregada a cada navegación) | M (requiere propagar el resultado ya validado sin debilitar el control) | Bajo (no toca la lógica de autorización en sí) | IMPLEMENTAR |
+| P6 | Administración | N+1 secuencial en guardado de matriz de precios | `components/admin/price-matrix.tsx:191-237`, Checkpoint 2 | Bajo-Medio (proporcional a celdas editadas por guardado) | S-M (ver comparación de alternativas abajo, sección Roadmap) | Bajo | IMPLEMENTAR |
+| P7 | Ventas | Waterfall evitable en `ventas/[id]` (devoluciones: 4 etapas → 2 posibles) | `app/(app)/ventas/[id]/page.tsx:76-98`, Checkpoint 2 | Bajo | S (reordenar `Promise.all` existentes) | Muy bajo | IMPLEMENTAR |
+| P8 | Tooling local | `scripts/rebuild_test_db.sh` falla silenciosamente en la migración 026 | Reproducido en Checkpoint 5, exit 3 sin mensaje | Bajo (solo dev local, no producción) | S | Muy bajo | IMPLEMENTAR |
+| P9 | Dashboard | "Ventas hoy" sin `.limit()`, acotado hoy solo por "1 vendedora, 1 día" | `app/(app)/page.tsx:27-31`, Checkpoint 2 | Bajo hoy, condicional a features futuras | — | — | VIGILANCIA |
+| P10 | UI | Dropdowns de producto sin `.limit()` (4+ lugares) | `app/(app)/stock/movimientos/page.tsx:67` y análogos, Checkpoint 2/4 | Bajo (30 productos reales hoy) | — | — | VIGILANCIA |
+| P11 | Paginación | Degradación lineal de `OFFSET` en páginas muy profundas | `EXPLAIN` a 100x, Checkpoint 3 (10ms a offset 2970) | Bajo (sin UI que permita saltar tan profundo hoy) | — | — | VIGILANCIA |
+| P12 | Observabilidad | Sin error tracking/APM instalado | `package.json`, Checkpoint 5 | Medio (agrava P3 — una degradación real no generaría alerta) | M | — | Gap documentado (no clasificable IMPLEMENTAR sin decisión de producto sobre qué herramienta) |
+| P13 | Concurrencia | Escenarios de 2 conexiones simultáneas no probados bajo carga real | Checkpoint 3 (solo análisis conceptual + lectura de código) | — | — | — | NO MEDIDO |
+| P14 | Mobile/Red real | Web Vitals/latencia en dispositivo y red reales | Checkpoint 4 | — | — | — | NO MEDIDO |
+| P15 | Región/latencia | Latencia real usuario↔Vercel↔Supabase por región | No cubierto (sección 30 del pedido) | — | — | — | NO MEDIDO |
+
+**Los VALIDADO — NO TOCAR** de todos los checkpoints (paginación real, índices, RLS, `fn_next_sale_number`, `fn_check_available_stock`/`fn_apply_stock_movement`, aislamiento de bundle de `exceljs`/`jspdf`, GRANTs de Supabase, `web_pending_pickups`, fixtures/limpieza, `lib/promotions/active-promotions.ts`) no se repiten en esta tabla — están documentados con su evidencia completa en el checkpoint correspondiente, y **no requieren ninguna acción**.
+
+### C. Estado consolidado
+
+- **Corrección financiera/stock/comisiones/promociones:** confiable en todo lo medido. Sin bugs de corrección nuevos encontrados (los únicos hallazgos de esta categoría, P1/P2, son sobre *reportar* el dato incompleto, no sobre *calcularlo* mal).
+- **Concurrencia:** los dos puntos de mayor riesgo del dominio (numeración de venta, sobreventa de stock) están correctamente protegidos con locks explícitos — confirmado por lectura de código real, no supuesto.
+- **Consultas acotadas/paginación:** sí, donde existe paginación real (`/ventas`, `/admin/facturacion`, `/stock/movimientos`) está bien implementada y se validó a escala. Los reportes RPC (`dashboard_report`, `doctor_sales_detail`, `product_revenue_report`) NO están acotados y son el hallazgo de mayor severidad de toda la auditoría.
+- **Límites conocidos:** sí — documentados explícitamente en P1-P11, cada uno con su punto de cruce (medido o inferido, diferenciado).
+- **Escala razonable:** con reservas — la app escala bien en lectura paginada y en escritura concurrente; escala mal en los reportes agregados sin rediseño.
+- **Tests confiables:** sí — 725+159 tests reales, baseline de quirks conocidos y estable, ninguna regresión encontrada, nada modificado para forzar verde en este trabajo.
+- **Riesgos:** ver tabla de priorización — ninguno de severidad crítica/bloqueante para operar hoy al volumen real probable de Magui; P3 (Dashboard) es el que primero se sentiría con crecimiento.
+- **Qué implementar después:** ver Roadmap.
+
+### D. Roadmap (candidatos para una fase de implementación futura — nada de esto se implementó en esta auditoría)
+
+1. **P1 — Detección de truncamiento en exports.** Comparar `data.length` contra el `.limit()` de cada ruta y devolver un aviso explícito (header o campo en la respuesta) que el frontend muestre al usuario. Métrica de "después": 0 exports que se descarguen sin aviso estando truncados (hoy: 3/3 rutas sin ningún aviso).
+2. **P2 — `.in()` grande.** Reemplazar por una RPC agregadora del lado del servidor (mismo patrón que `dashboard_report`/`doctor_sales_detail`, que no sufren este problema) o paginar el `.in()` en lotes de ~200-300 ids. Métrica de "después": el export debe completarse con el volumen real máximo esperado sin URLs que superen ~8.000 caracteres (margen de seguridad bajo el umbral de 431 medido).
+3. **P3/P4 — Rediseño de `dashboard_report`/`doctor_sales_detail`/`product_revenue_report`.** Candidato: calcular los agregados de `sale_item_net` filtrados por el rango una única vez (CTE/tabla temporal dentro de la función) y reusarlos en las 6-8 secciones, en vez de repetir el `JOIN LATERAL`; evaluar precalcular el set de ubicaciones permitidas por `has_location_access` una sola vez. Requiere prueba de regresión exhaustiva contra los valores actuales (es lógica financiera real) antes de cualquier cambio. Métrica de "después": tiempo de `dashboard_report` a volumen 10x (80.000 ventas) por debajo de ~2 segundos (hoy: 10.7s), y sin cambiar ningún resultado numérico devuelto.
+4. **P5 — Deduplicar `getUser()`.** Propagar el resultado ya validado por `proxy.ts` hacia `getCurrentProfile()` (ej. header interno seteado solo por el middleware) sin debilitar la verificación en sí. Métrica de "después": 1 llamada real a Supabase Auth por navegación en vez de 2.
+5. **P6 — Guardado de matriz de precios.** **Sin asumir todavía cuál es la solución final**, conforme a lo pedido explícitamente: comparar al menos estas tres alternativas antes de elegir, evaluando específicamente el caso de matrices grandes (muchas celdas editadas en un mismo guardado):
+   - **`Promise.allSettled` (paralelizar las llamadas actuales):** menor esfuerzo, preserva el tracking de éxito/fallo por celda que el código actual ya implementa a propósito (ver comentario citado en Checkpoint 2). Riesgo: sigue siendo N llamadas de red independientes (solo en paralelo, no menos), y N escrituras separadas contra Postgres sin ninguna garantía de atomicidad conjunta — si la conexión se corta a mitad de camino, un subconjunto de celdas queda guardado y otro no (esto ya ocurre hoy con el enfoque secuencial, `Promise.allSettled` no lo empeora ni lo mejora en ese aspecto, solo lo hace más rápido).
+   - **RPC batch (una única función que reciba un array de cambios y los aplique en una sola llamada de red):** una sola invocación de red en vez de N; puede envolver las N escrituras en una única transacción de Postgres (atomicidad real: todo o nada) o mantener el commit por celda dentro de la misma función si se prefiere preservar el reporte granular de éxito/fallo — a diferenciar y decidir explícitamente en el diseño, no asumir. Esfuerzo mayor (nueva función SQL + su propio test pgTAP) pero resuelve tanto la latencia como, opcionalmente, la atomicidad.
+   - **Mantener el enfoque secuencial actual:** sigue siendo correcto y seguro; solo se vuelve una molestia de UX real cuando se editan muchas celdas en un mismo guardado (impacto proporcional, no crítico).
+   La elección entre estas tres depende de si se prioriza atomicidad real (RPC batch) o menor esfuerzo con paralelismo simple (`Promise.allSettled`) — **queda pendiente de decisión explícita del usuario/negocio antes de implementar**, no una elección técnica unilateral. Métrica de "después" (cualquiera sea la opción elegida): tiempo de guardado de una matriz de 20+ celdas editadas, hoy proporcional a N round-trips secuenciales (no medido en milisegundos exactos por no haber sesión autenticada real disponible en este entorno).
+6. **P7 — Reordenar `Promise.all` en `ventas/[id]`.** Cambio pequeño y de bajo riesgo: fusionar `returnItems`/`returnAccounts`/`returnCreators` en un único `Promise.all` ya que los tres dependen solo de `returns`. Métrica de "después": 2 etapas secuenciales en la porción de devoluciones en vez de 4.
+7. **P8 — Arreglar `scripts/rebuild_test_db.sh`.** Sembrar los SKUs esperados por la migración 026 antes del loop, y corregir el manejo de errores para que un fallo real se reporte explícitamente. Bajo impacto (solo tooling local).
+8. **P12 — Observabilidad.** Decisión de producto pendiente (qué herramienta, no técnica de esta auditoría) — recomendado evaluar antes de la siguiente fase de crecimiento, dado que agrava la detección de P3 si se implementa el rediseño y algo queda mal calibrado.
+
+---
+
+## Sección 41 — Validación final de esta auditoría
+
+Verificado explícitamente antes de cerrar esta entrega (no supuesto):
+
+- **`main` no fue modificado:** `git diff --stat origin/main...HEAD` en esta rama muestra únicamente `docs/audits/magui-v1-technical-audit.md` (412 líneas agregadas, 0 en otro archivo). `origin/main` sigue en el mismo commit (`80026d3`) que era su HEAD antes de empezar este trabajo.
+- **La rama de exploración visual (`claude/magui-v1-elegante-ui`) no fue tocada:** `git rev-parse` local y remoto de esa rama coinciden exactamente (`7de3eec`), sin ningún commit nuevo de esta sesión.
+- **Cero escrituras en producción:** ninguna operación de este trabajo usó `.env.local` ni ninguna credencial real de Supabase — todo se ejecutó contra bases Postgres locales, aisladas y descartables (`magui_test`, `magui_audit`), reconstruidas desde las migraciones reales.
+- **Ninguna migración se ejecutó contra producción:** las únicas ejecuciones de migraciones fueron locales, contra las dos bases mencionadas arriba.
+- **Ningún deploy.**
+- **Ningún test fue modificado para forzar verde:** se corrieron tal como están; los 62 fallos de pgTAP son el quirk ya documentado antes de este trabajo, no se tocó ningún archivo de test.
+- **Todos los cambios en el repositorio son exclusivamente de documentación de auditoría:** el único archivo modificado en toda esta rama es `docs/audits/magui-v1-technical-audit.md`.
+- **No se registró ningún secreto:** no se logueó ninguna credencial, token ni clave real en ningún artefacto de este trabajo (los `set_config`/JWT simulados usados para `EXPLAIN ANALYZE` local son valores sintéticos propios de `magui_audit`, no credenciales reales).
+- **Árbol de trabajo:** limpio (`git status --short` sin salida) al momento de cerrar esta entrega, con todo el progreso ya commiteado y pusheado a `claude/magui-v1-performance-audit`.
+- **Reporte versionado:** sí, en esta misma rama, en los commits de este trabajo.
+
+## Sección 42 — Cierre
+
+Con este cierre, los Checkpoints 1-6 pedidos están completos. **Esta auditoría se detiene acá, conforme a lo pedido explícitamente** — no se implementa ningún ítem del Roadmap (sección D) sin aprobación explícita separada. Resumen de lo que esta auditoría deja establecido con evidencia real (no una lista de recomendaciones infladas):
+
+- Los flujos financieros, de stock, comisiones y promociones son confiables en todo lo medido — sin bugs de corrección nuevos.
+- Las consultas paginadas están acotadas y se validaron rápidas hasta 800.000 ventas sintéticas; los reportes agregados (`dashboard_report` en particular) no lo están, y ese es el riesgo de escalabilidad más concreto y mejor evidenciado de toda la V1.
+- Existen límites conocidos y documentados (exports, `.in()`, paginación profunda) con su punto de cruce diferenciado entre medido e inferido.
+- La app escala razonablemente en lectura paginada y en escritura concurrente (protegida con locks correctos); no escala bien en los reportes sin rediseño.
+- Los tests son confiables: 725 pgTAP + 159 Vitest, baseline de quirks estable y ya documentado antes de este trabajo, cero regresiones nuevas.
+- Los riesgos reales quedan priorizados en la tabla de la sección B, con impacto/esfuerzo/riesgo diferenciados — ninguno crítico/bloqueante para operar hoy.
+- Qué implementar después queda en el Roadmap (sección D), sin decisiones unilaterales tomadas por esta auditoría donde el pedido explícitamente pidió dejarlas abiertas (P6, guardado de matriz de precios).
