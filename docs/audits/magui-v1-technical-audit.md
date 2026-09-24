@@ -327,4 +327,43 @@ where location_id = ... and product_id = ... for update;
 
 ---
 
-*(Checkpoints 4-6 — Frontend/bundle/imágenes/mobile, Tests/fixtures/observabilidad/Supabase grants, e informe consolidado con priorización y roadmap — continúan en la próxima entrega de este mismo documento, dentro de esta misma rama.)*
+## Checkpoint 4 — Frontend (Next.js, bundle, componentes, auth, imágenes)
+
+### Bundle real — `next build` de producción, medido directamente sobre los artefactos generados
+
+Se corrió `npm run build` (Next.js 16.3.3, Turbopack) contra el estado real de `main` en esta misma rama de auditoría (sin ninguna modificación de código). Turbopack no imprime la tabla de tamaño por ruta que mostraba el build clásico de Webpack — se midió directamente inspeccionando `.next/static` (bundle real que llega al navegador) y `.next/server` (bundle server-only) generados por ese build.
+
+- **`.next/static/chunks` (todo el JS que se sirve al navegador, todas las rutas combinadas): 2,1 MB.** Los chunks más grandes son 280K/248K/232K — consistente con una app de este tamaño (framework de Next.js/React + shadcn/Radix + lógica de la app), sin ningún chunk anómalamente grande que sugiera una librería pesada filtrada al cliente por error.
+- **`exceljs`/`ExcelJS`: 0 ocurrencias** en `.next/static/chunks/*.js` (`grep` directo sobre los archivos reales, no una suposición sobre `package.json`). **Sí aparece** en `.next/server/chunks/[root-of-the-server]__0q8x4f1._.js` — confirma que está efectivamente usada, pero exclusivamente del lado del servidor.
+- **`jspdf`/`jsPDF`/`autoTable`: 0 ocurrencias** en el bundle de cliente. **Sí aparece** en un chunk server-only distinto (`[root-of-the-server]__0cb5mei._.js`).
+— **Clasificación: VALIDADO — NO TOCAR.** Esto responde directamente a la preocupación del pedido original ("no asumir que las dependencias de `package.json` llegan al navegador") con evidencia real de los artefactos de build, no con una lectura de `package.json` — ambas librerías pesadas de exportación están correctamente aisladas a los Route Handlers (`app/api/export/**/route.ts`) y nunca llegan al cliente.
+
+### Server vs. Client Components
+
+`grep` de `"use client"` sobre `app/`, `components/`, `lib/`: **55 de 74** archivos `.tsx` de `components/` son Client Components (el resto de rutas en `app/` son Server Components por defecto salvo que declaren `"use client"`). No se identificó ningún caso de un componente marcado `"use client"` que no tuviera una razón real (interactividad, hooks de estado, `usePathname`/`useRouter`, formularios) al revisar los componentes más grandes de esa lista durante este mismo trabajo (`price-matrix.tsx`, `app-shell.tsx`, tablas de administración) — todos usan hooks de cliente genuinos.
+— **Clasificación: VALIDADO — NO TOCAR.**
+
+### Duplicación de Auth — hallazgo real, con evidencia de código completo
+
+Lectura completa de `lib/supabase/proxy.ts` (el middleware, corre en **cada** request/navegación) y `lib/auth/get-profile.ts` (`getCurrentProfile()`, llamado desde el layout de `(app)`, el layout de `admin`, y potencialmente cada `page.tsx` individual):
+
+- `getCurrentProfile()` **ya está envuelto en `cache()` de React** — el propio comentario del archivo (líneas 26-32) documenta que esto fue una corrección deliberada anterior a esta auditoría: sin ese `cache()`, hasta 3 validaciones de auth + 3 consultas de perfil/sedes redundantes ocurrían en una sola carga de página (layout `(app)` + layout `admin` + la page). Con `cache()`, dentro de un mismo request de React Server Components, solo la primera llamada pega contra Supabase — el resto reusa la misma promesa. **Esto ya está bien resuelto y no se toca.**
+- Sin embargo, `cache()` de React **solo dedupea dentro del árbol de renderizado de React Server Components** — no cruza el límite hacia el middleware, que se ejecuta en una fase completamente separada, **antes** de que arranque el render de RSC. `proxy.ts` (línea 43) llama `supabase.auth.getUser()` una vez para decidir si redirige a `/login`; luego, ya dentro del render, `getCurrentProfile()` (línea 43 de `get-profile.ts`) llama `supabase.auth.getUser()` **otra vez**, sin ningún mecanismo que le pase el resultado ya validado por el middleware.
+- **Resultado medido por lectura de código (no por timing, ya que no hay sesión autenticada real disponible en este entorno):** cada navegación de página paga **2 round-trips de red reales a Supabase Auth** (`getUser()` revalida el JWT contra el servidor de Supabase Auth, a diferencia de `getSession()` que solo lee la cookie — el propio comentario de `proxy.ts` línea 36-37 lo aclara explícitamente, y es la elección correcta de seguridad) en vez de 1. Ambos usan además `fetchWithTimeout(8000)` (documentado en un bloque anterior de este mismo trabajo como la causa raíz más probable de un fallo de login diagnosticado en la rama visual `claude/magui-v1-elegante-ui`, fuera del alcance de esta auditoría) — duplicar esta llamada duplica también la ventana de exposición a esa lentitud/timeout en cada navegación.
+— **Clasificación: IMPLEMENTAR — impacto proporcional a la latencia real de Supabase Auth (no medida contra producción en este entorno).** Candidato de solución (no implementado, requiere diseño cuidadoso): que `proxy.ts` propague el resultado ya validado del `getUser()` del middleware hacia el render de RSC (patrón estándar de Next.js: setear un header interno de request, ej. `x-user-id`, desde el middleware, y que `getCurrentProfile()` lo lea en vez de re-llamar `getUser()` — nunca un header controlable por el cliente, y nunca reemplazando la validación real, solo evitando repetirla dentro del mismo request). **Restricción explícita respetada:** esto es una optimización de trabajo redundante, no un debilitamiento de ningún control de autenticación — ambas llamadas hoy hacen exactamente la misma verificación criptográfica, dos veces.
+
+### Imágenes y assets
+
+`public/` completo pesa **132 KB** (`brand/`: 76K — logo + mark del isotipo; `icons/`: 56K — PWA icons). No hay ningún asset de imagen pesado en el repo.
+— **Clasificación: VALIDADO — NO TOCAR.**
+
+Las imágenes de producto (`products.image_url`) son URLs externas arbitrarias cargadas por el usuario (no Supabase Storage — consistente con el hallazgo ya documentado en Checkpoint 1 de que la app no usa Storage real), renderizadas con `<img loading="lazy">` plano en vez de `next/image` (`components/admin/products-table.tsx:160`, y el mismo patrón en `kits-table.tsx`). Usar `next/image` con URLs externas arbitrarias requeriría configurar `images.remotePatterns` en `next.config.ts` para cada dominio posible (fricción real, no trivial, para URLs que el usuario puede pegar de cualquier proveedor) — el `loading="lazy"` manual ya cubre el beneficio más importante (no bloquear el render inicial) sin esa complejidad. Son miniaturas chicas en una tabla de administración, no imágenes grandes en una vista pública.
+— **Clasificación: VALIDADO — NO TOCAR** (decisión razonable dado el trade-off real, no un descuido).
+
+### Mobile / rendimiento percibido en red real
+
+**NO MEDIDO.** Este entorno no tiene acceso a un dispositivo móvil real, a throttling de red real, ni a una sesión autenticada real (local o contra producción) desde la cual medir Web Vitals reales (LCP/INP/CLS) o tiempos de carga en una conexión real. Una vista previa responsive de un navegador de escritorio (la técnica usada en el trabajo visual de `claude/magui-v1-elegante-ui`, fuera del alcance de esta auditoría) mide *layout*, no *performance* — el pedido original es explícito en que no se debe sustituir una por la otra. Se deja marcado como pendiente de medición real (ej. Lighthouse/PageSpeed Insights contra la URL pública de producción, que es de solo lectura y no requeriría autenticación para las páginas públicas, o WebPageTest) para un pase futuro, no como parte de esta entrega.
+
+---
+
+*(Checkpoints 5-6 — Tests/fixtures/observabilidad/Supabase grants, e informe consolidado con priorización y roadmap — continúan en la próxima entrega de este mismo documento, dentro de esta misma rama.)*
