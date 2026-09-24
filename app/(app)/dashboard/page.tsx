@@ -7,6 +7,7 @@ import { getCurrentProfile } from "@/lib/auth/get-profile";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DashboardHero } from "@/components/dashboard/dashboard-hero";
 import { DashboardFilters } from "@/components/dashboard/dashboard-filters";
 import { BarList } from "@/components/dashboard/bar-list";
 import { BillingSummary } from "@/components/dashboard/billing-summary";
@@ -70,25 +71,21 @@ export default async function DashboardPage(props: PageProps<"/dashboard">) {
 
   return (
     <div className="flex flex-col gap-5 p-4 md:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">Magui Rejuve</h1>
-          <p className="text-sm text-muted-foreground">
-            {from} — {to}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/dashboard/productos">
-              <PackageSearch /> Facturación por producto
-            </Link>
-          </Button>
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/dashboard/comisiones">
-              <Percent /> Comisiones por doctora
-            </Link>
-          </Button>
-        </div>
+      {/* V1 Elegante (rama claude/magui-v1-elegante-ui): banner puramente
+          visual, sin queries ni lógica propia — ver dashboard-hero.tsx. */}
+      <DashboardHero fullName={profile.fullName} />
+
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/dashboard/productos">
+            <PackageSearch /> Facturación por producto
+          </Link>
+        </Button>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/dashboard/comisiones">
+            <Percent /> Comisiones por doctora
+          </Link>
+        </Button>
       </div>
 
       <DashboardFilters locations={locations ?? []} channels={channels ?? []} />
