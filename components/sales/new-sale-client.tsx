@@ -21,9 +21,9 @@ import { formatCurrency } from "@/lib/utils";
 import { newSaleSchema } from "@/lib/validation/sale";
 import {
   computeRequiresPaymentAccountNow,
-  paymentMethodRequiresBilling,
   resolveFulfillmentLocationId,
   resolveFulfillmentType,
+  resolvePaymentMethodRequiresBilling,
   type FulfillmentChoice,
 } from "@/lib/sales/web-fulfillment";
 import { computeAllowedPaymentMethodIds, mapToLookup } from "@/lib/sales/promotion-payment-methods";
@@ -43,6 +43,10 @@ interface PaymentMethodOption {
   id: string;
   code: string;
   name: string;
+  // Checkpoint Final, Hallazgo B: dato real de payment_methods.requires_billing
+  // (migración 69) — nunca se infiere por code. Una condición nueva creada
+  // desde /admin/condiciones-precio queda reflejada acá sin tocar código.
+  requires_billing: boolean;
 }
 interface PaymentAccountOption {
   id: string;
@@ -267,10 +271,12 @@ export function NewSaleClient({
     };
   }, [locationId, supabase, isWeb]);
 
-  // Cuenta de ingreso: obligatoria solo para transferencia/1 pago/3 cuotas,
-  // nunca para efectivo ni venta sin costo. El backend (fn_create_sale_core)
-  // vuelve a decidir esto de forma independiente — esto es solo para
-  // mostrar/pedir el campo en el momento justo, nunca la fuente de verdad.
+  // Cuenta de ingreso: obligatoria solo para medios con requires_billing=true
+  // (dato real de payment_methods, migración 69 — Checkpoint Final, Hallazgo
+  // B: nunca más una lista de codes hardcodeada acá), nunca para venta sin
+  // costo. El backend (fn_create_sale_core) vuelve a decidir esto de forma
+  // independiente — esto es solo para mostrar/pedir el campo en el momento
+  // justo, nunca la fuente de verdad.
   //
   // requiresBilling: sigue exigiendo cliente con DNI (factura pendiente),
   // sin excepción. requiresPaymentAccountNow es más angosto — un pedido Web
@@ -279,7 +285,7 @@ export function NewSaleClient({
   // cobrar. No confundir "factura pendiente" con "cobro pendiente" (sección
   // 17 del pedido original) — son ejes distintos, nunca se mezclan.
   const selectedPaymentMethod = paymentMethods.find((pm) => pm.id === paymentMethodId);
-  const requiresBilling = !isFreeSale && paymentMethodRequiresBilling(selectedPaymentMethod?.code);
+  const requiresBilling = !isFreeSale && resolvePaymentMethodRequiresBilling(selectedPaymentMethod);
   const requiresPaymentAccountNow = computeRequiresPaymentAccountNow({ requiresBilling, isWeb, paymentStatus });
 
   // Alias para transferencia: a propósito NO es lo mismo que
@@ -297,8 +303,9 @@ export function NewSaleClient({
 
   function handlePaymentMethodChange(id: string) {
     setPaymentMethodId(id);
-    const code = paymentMethods.find((pm) => pm.id === id)?.code;
-    if (!paymentMethodRequiresBilling(code)) setPaymentAccountId("");
+    if (!resolvePaymentMethodRequiresBilling(paymentMethods.find((pm) => pm.id === id))) {
+      setPaymentAccountId("");
+    }
   }
 
   // Cambiar de canal resetea la forma de entrega (nunca queda una sede

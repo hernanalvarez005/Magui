@@ -41,7 +41,7 @@ export default async function NewSalePage() {
       .eq("active", true)
       .order("name"),
     supabase.from("sales_channels").select("id, code, name").eq("active", true).order("sort_order"),
-    supabase.from("payment_methods").select("id, code, name").eq("active", true).order("sort_order"),
+    supabase.from("payment_methods").select("id, code, name, requires_billing").eq("active", true).order("sort_order"),
     // alias viene junto con el listado inicial — nunca una consulta extra
     // al elegir cuenta en el selector (sección 15 del pedido).
     supabase.from("payment_accounts").select("id, code, name, alias").eq("active", true).order("sort_order"),

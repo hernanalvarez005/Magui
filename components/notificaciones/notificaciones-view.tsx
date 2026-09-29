@@ -17,6 +17,7 @@ interface PaymentMethodOption {
   id: string;
   code: string;
   name: string;
+  requires_billing: boolean;
 }
 
 interface PaymentAccountOption {
