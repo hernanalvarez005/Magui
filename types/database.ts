@@ -1326,6 +1326,14 @@ export type Database = {
           p_doctor_id?: string | null;
           p_notes?: string | null;
           p_sold_at?: string;
+          // Checkpoint 2.1 (migración 71) — circuito de pago/facturación.
+          // Opcionales, default null: un caller que no los manda ve el
+          // comportamiento histórico exacto. p_fulfillment_type nunca se
+          // expone en el contrato público de la ruta (ver
+          // lib/validation/web-order.ts) — solo el route handler lo decide.
+          p_payment_status?: SalePaymentStatus | null;
+          p_payment_account_id?: string | null;
+          p_fulfillment_type?: SaleFulfillmentType | null;
         };
         Returns: CreateSaleResult;
       };

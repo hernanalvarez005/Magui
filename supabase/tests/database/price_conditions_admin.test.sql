@@ -11,10 +11,12 @@
 --   I. update_price_condition — edición atómica (migración 70) — 15 casos.
 --   J. Web real vía create_web_order (mismo camino que la ruta externa) — 2 casos.
 --   K. "9 cuotas test" — prueba estructural data-driven, condición ficticia — 9 casos.
+--   L. create_web_order + circuito de pago/facturación (migración 71,
+--      Checkpoint 2.1) — 19 casos.
 -- Correr con: rebuild local (preamble + seed_026_skus antes de la migración
 -- 26) + pg_prove.
 begin;
-select plan(59);
+select plan(78);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: admin con acceso a ambas sedes, vendedora sin permisos de
@@ -696,6 +698,224 @@ select is(
   4242::numeric,
   'K7: venta real con "9 cuotas test" cotiza correctamente el precio cargado — arquitectura 100% data-driven demostrada'
 );
+
+-- ===========================================================================
+-- SECCIÓN L — Checkpoint 2.1: create_web_order + circuito de pago/
+-- facturación (migración 71). PROD-VITC (no PCA-N/PCA-N2): producto real del
+-- seed, ya usado en Secciones D/E/F, con precio propio bajo CASH/"2 cuotas
+-- sin interés"/LIST — mismo criterio ya establecido en este archivo de nunca
+-- inventar un precio.
+--
+-- Nota: el caso "payload inválido -> la ruta devuelve un error claro" (PAID
+-- sin payment_account_id, rechazado ANTES de llamar a Postgres) se prueba en
+-- Vitest (tests/web-order-schema.test.ts), no acá — pgTAP llama directo a
+-- create_web_order (la RPC), nunca pasa por la capa HTTP de
+-- app/api/integrations/web-orders/route.ts.
+-- ===========================================================================
+select id as dep_id from stock_locations where code = 'DEP' \gset
+select set_stock(:'dep_id'::uuid, (select id from products where sku = 'PROD-VITC'), 100, 'RECEPTION');
+
+-- L1/L2: retrocompatibilidad explícita — un payload histórico (CASH, sin
+-- payment_status/payment_account_id/fulfillment_type) se comporta EXACTO
+-- igual que antes de esta migración: éxito, y ambas columnas nuevas quedan
+-- NULL (nunca se infiere SHIPPING ni ningún estado de pago en silencio).
+reset role;
+select (create_web_order(
+  jsonb_build_array(jsonb_build_object('product_id', (select id from products where sku = 'PROD-VITC'), 'quantity', 1)),
+  :'sed25_id'::uuid, :'cash_id'::uuid, 'test-integration', 'PCA-WEB-L1'
+) ->> 'sale_id')::uuid as l1_sale_id \gset
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'aca00000-0000-0000-0000-000000000001', false);
+
+select ok(
+  :'l1_sale_id' is not null,
+  'L1: create_web_order histórico (CASH, sin ninguno de los 3 parámetros nuevos) sigue funcionando'
+);
+select is(
+  (select (payment_status, fulfillment_type) from sales where id = :'l1_sale_id'::uuid),
+  (null::sale_payment_status, null::sale_fulfillment_type),
+  'L2: la venta histórica queda con payment_status/fulfillment_type NULL — comportamiento exacto de antes de la 71, nunca se asume SHIPPING/PENDING'
+);
+
+-- L3-L11: "2 cuotas sin interés" (real, no ficticia) + Web habilitada +
+-- PENDING, vía SHIPPING interno (Depósito) — el escenario central del pedido.
+reset role;
+select (create_web_order(
+  jsonb_build_array(jsonb_build_object('product_id', (select id from products where sku = 'PROD-VITC'), 'quantity', 1)),
+  :'dep_id'::uuid, :'two_installments_pm_id'::uuid, 'test-integration', 'PCA-WEB-L3',
+  :'customer_id'::uuid, null, null, clock_timestamp(),
+  'PENDING'::sale_payment_status, null, 'SHIPPING'::sale_fulfillment_type
+) ->> 'sale_id')::uuid as l3_sale_id \gset
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'aca00000-0000-0000-0000-000000000001', false);
+
+select ok(
+  :'l3_sale_id' is not null,
+  'L3: "2 cuotas sin interés" + Web habilitada + PENDING vía create_web_order (SHIPPING interno) -> éxito'
+);
+select is(
+  (select billing_status from sales where id = :'l3_sale_id'::uuid),
+  'NOT_REQUIRED'::sale_billing_status,
+  'L4: billing_status = NOT_REQUIRED al crear (BUGFIX 57, ya existente: mientras el cobro está PENDING, la obligación de facturación no nace todavía — nace recién al cobrar, ver L16b)'
+);
+select is(
+  (select payment_status from sales where id = :'l3_sale_id'::uuid),
+  'PENDING'::sale_payment_status,
+  'L5: payment_status = PENDING, tal como se declaró'
+);
+select is(
+  (select payment_account_id from sales where id = :'l3_sale_id'::uuid),
+  null::uuid,
+  'L6: payment_account_id queda NULL — no se sabe todavía en qué cuenta va a entrar el cobro (mismo criterio que Nueva Venta Web/PENDING)'
+);
+select is(
+  (select (fulfillment_type, fulfillment_status) from sales where id = :'l3_sale_id'::uuid),
+  ('SHIPPING'::sale_fulfillment_type, 'SHIPPED'::sale_fulfillment_status),
+  'L7: fulfillment_type=SHIPPING/fulfillment_status=SHIPPED — el route handler lo decidió internamente, nunca expuesto en el contrato externo'
+);
+select is(
+  (select price_condition_name_snapshot from sales where id = :'l3_sale_id'::uuid),
+  '2 cuotas sin interés',
+  'L8: snapshot correcto — condición aplicada, nombre congelado al momento de la venta'
+);
+select is(
+  (select total from sales where id = :'l3_sale_id'::uuid),
+  (
+    select amount from product_prices
+    where product_id = (select id from products where sku = 'PROD-VITC')
+      and price_condition_id = :'two_installments_pc_id'::uuid and active
+  ),
+  'L9: precio correcto — cotiza el precio real cargado para PROD-VITC bajo "2 cuotas sin interés", nunca inventado'
+);
+select is(
+  (select quantity from inventory_balances where location_id = :'dep_id'::uuid and product_id = (select id from products where sku = 'PROD-VITC')),
+  99::numeric,
+  'L10: stock correcto — SHIPPING descuenta de inmediato (fn_apply_stock_movement), mismo comportamiento de siempre de create_web_order (100 recibidas - 1 vendida = 99)'
+);
+select is(
+  (select count(*)::int from sale_stock_reservations where sale_id = :'l3_sale_id'::uuid),
+  0,
+  'L11: sin ninguna fila en sale_stock_reservations — SHIPPING nunca reserva (esa es la rama exclusiva de PICKUP, fuera de alcance acá)'
+);
+
+-- L12-L13: PAID, con y sin cuenta — la RPC (autoridad real, la ruta ya
+-- valida esto antes de llamarla, ver Vitest) sigue exigiendo la cuenta.
+reset role;
+select ok(
+  (
+    (create_web_order(
+      jsonb_build_array(jsonb_build_object('product_id', (select id from products where sku = 'PROD-VITC'), 'quantity', 1)),
+      :'dep_id'::uuid, :'two_installments_pm_id'::uuid, 'test-integration', 'PCA-WEB-L12',
+      :'customer_id'::uuid, null, null, clock_timestamp(),
+      'PAID'::sale_payment_status, :'account_id'::uuid, 'SHIPPING'::sale_fulfillment_type
+    ) ->> 'sale_id') is not null
+  ),
+  'L12: "2 cuotas sin interés" + PAID + cuenta válida -> éxito'
+);
+select throws_ok(
+  format(
+    $$select create_web_order(
+      jsonb_build_array(jsonb_build_object('product_id', '%s'::uuid, 'quantity', 1)),
+      '%s'::uuid, '%s'::uuid, 'test-integration', 'PCA-WEB-L13',
+      '%s'::uuid, null, null, clock_timestamp(),
+      'PAID'::sale_payment_status, null, 'SHIPPING'::sale_fulfillment_type
+    )$$,
+    (select id from products where sku = 'PROD-VITC'), :'dep_id', :'two_installments_pm_id', :'customer_id'
+  ),
+  'L13: "2 cuotas sin interés" + PAID sin cuenta -> rechazo (fn_create_sale_core, sin cambios ahí)'
+);
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'aca00000-0000-0000-0000-000000000001', false);
+
+-- L14: disponibilidad Web se sigue validando de forma independiente al
+-- circuito de pago — deshabilitar Web para "2 cuotas" rechaza el mismo
+-- pedido que en L3, sin ningún bypass en create_web_order.
+select priority as ti_priority from price_conditions where id = :'two_installments_pc_id'::uuid \gset
+select update_price_condition(
+  :'two_installments_pc_id'::uuid, '2 cuotas sin interés', 0, true, :ti_priority,
+  true, array['SED-25', 'SED-37'], false
+);
+reset role;
+select throws_ok(
+  format(
+    $$select create_web_order(
+      jsonb_build_array(jsonb_build_object('product_id', '%s'::uuid, 'quantity', 1)),
+      '%s'::uuid, '%s'::uuid, 'test-integration', 'PCA-WEB-L14',
+      '%s'::uuid, null, null, clock_timestamp(),
+      'PENDING'::sale_payment_status, null, 'SHIPPING'::sale_fulfillment_type
+    )$$,
+    (select id from products where sku = 'PROD-VITC'), :'dep_id', :'two_installments_pm_id', :'customer_id'
+  ),
+  'L14: admin deshabilita Web para "2 cuotas sin interés" -> create_web_order la rechaza (fn_price_condition_available, sin bypass)'
+);
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'aca00000-0000-0000-0000-000000000001', false);
+select update_price_condition(
+  :'two_installments_pc_id'::uuid, '2 cuotas sin interés', 0, true, :ti_priority,
+  true, array['SED-25', 'SED-37'], true
+);
+
+-- L15: SHIPPING exige Depósito — nunca se transforma/corrige el location_id
+-- recibido, la validación existente de fn_create_sale_core lo rechaza tal cual.
+reset role;
+select throws_ok(
+  format(
+    $$select create_web_order(
+      jsonb_build_array(jsonb_build_object('product_id', '%s'::uuid, 'quantity', 1)),
+      '%s'::uuid, '%s'::uuid, 'test-integration', 'PCA-WEB-L15',
+      '%s'::uuid, null, null, clock_timestamp(),
+      'PENDING'::sale_payment_status, null, 'SHIPPING'::sale_fulfillment_type
+    )$$,
+    (select id from products where sku = 'PROD-VITC'), :'sed25_id', :'two_installments_pm_id', :'customer_id'
+  ),
+  'L15: SHIPPING con location_id = Sede 25 (no Depósito) -> rechazo, sin ninguna corrección silenciosa'
+);
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'aca00000-0000-0000-0000-000000000001', false);
+
+-- L16-L17: el pedido PENDING de L3 no queda huérfano — mark_web_order_paid
+-- (ya existente, sin cambios) lo reconoce porque fulfillment_type ya no es
+-- NULL, y lo cobra correctamente.
+select mark_web_order_paid(:'l3_sale_id'::uuid, null, :'account_id'::uuid) as l16_result \gset
+select is(
+  (select payment_status from sales where id = :'l3_sale_id'::uuid),
+  'PAID'::sale_payment_status,
+  'L16: mark_web_order_paid cobra correctamente el pedido PENDING creado vía create_web_order — no queda huérfano'
+);
+select is(
+  (select payment_account_id from sales where id = :'l3_sale_id'::uuid),
+  :'account_id'::uuid,
+  'L17: payment_account_id queda seteado tras el cobro'
+);
+select is(
+  (select billing_status from sales where id = :'l3_sale_id'::uuid),
+  'PENDING'::sale_billing_status,
+  'L17b: billing_status recién pasa de NOT_REQUIRED a PENDING acá (BUGFIX 57) — la obligación de facturar nace al cobrar, no antes; demuestra que el pedido no quedó huérfano en ningún eje'
+);
+
+-- L18: prueba estructural — condición FICTICIA nueva, requires_billing=true,
+-- habilitada para Web, sin ningún "if 2 cuotas"/"if CARD_X" en el camino.
+select create_price_condition(
+  'Web Shipping Test', 0, true, array['SED-25'], true
+) as l18_result \gset
+select (:'l18_result'::jsonb ->> 'price_condition_id')::uuid as l18_pc_id \gset
+select (:'l18_result'::jsonb ->> 'payment_method_id')::uuid as l18_pm_id \gset
+select set_product_price((select id from products where sku = 'PROD-VITC'), :'l18_pc_id'::uuid, 12345, clock_timestamp());
+
+reset role;
+select ok(
+  (
+    (create_web_order(
+      jsonb_build_array(jsonb_build_object('product_id', (select id from products where sku = 'PROD-VITC'), 'quantity', 1)),
+      :'dep_id'::uuid, :'l18_pm_id'::uuid, 'test-integration', 'PCA-WEB-L18',
+      :'customer_id'::uuid, null, null, clock_timestamp(),
+      'PENDING'::sale_payment_status, null, 'SHIPPING'::sale_fulfillment_type
+    ) ->> 'sale_id') is not null
+  ),
+  'L18: condición nueva y ficticia ("Web Shipping Test", requires_billing=true, Web habilitada) funciona por el mismo camino SHIPPING+PENDING, sin cambio de código — arquitectura data-driven demostrada también para el circuito Web'
+);
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'aca00000-0000-0000-0000-000000000001', false);
 
 select * from finish();
 rollback;

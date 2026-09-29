@@ -1,7 +1,7 @@
-# pgTAP — baseline conocido: 77 "throws_ok compatibility artifacts"
+# pgTAP — baseline conocido: 80 "throws_ok compatibility artifacts"
 
 Al correr toda la suite (`pg_prove supabase/tests/database/*.sql`) van a
-aparecer **77 tests marcados como "failed" que NO son regresiones**. Es un
+aparecer **80 tests marcados como "failed" que NO son regresiones**. Es un
 artefacto de compatibilidad del runner local (pgTAP + Tap::Harness vía
 `pg_prove`), no un bug de la aplicación ni de las RPC. Antes de investigar
 cualquier "failed" nuevo, comparar contra esta lista — si coincide
@@ -54,7 +54,7 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `card6_installments.test.sql` | 11, 15, 16, 21, 22, 23 | 23 |
 | `exchange_legacy_stock_reversal.test.sql` | 17, 21 | 23 |
 | `mejoras.test.sql` | 1, 6, 8, 11 | 12 |
-| `price_conditions_admin.test.sql` | 7, 9, 19, 20, 28, 31, 32, 33, 40, 43, 46, 47, 50, 55, 56 | 59 |
+| `price_conditions_admin.test.sql` | 7, 9, 19, 20, 28, 31, 32, 33, 40, 43, 46, 47, 50, 55, 56, 72, 73, 74 | 78 |
 | `pricing_and_sales.test.sql` | 9 | 11 |
 | `promotion_payment_methods.test.sql` | 1, 2, 3, 4, 11, 12, 15, 16, 17, 19, 20, 22, 23 | 25 |
 | `promotion_per_line_stacking.test.sql` | 14, 16 | 18 |
@@ -71,8 +71,8 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `web_order_history.test.sql` | 14 | 18 |
 | `web_order_paid_method_change.test.sql` | 3, 5, 6 | 7 |
 
-Total: **77 de 784** tests reales de la suite completa (al día de la
-migración 70, `update_price_condition` — ver `Origen`).
+Total: **80 de 803** tests reales de la suite completa (al día de la
+migración 71, circuito de pago/facturación de `create_web_order` — ver `Origen`).
 El total de tests crece con cada archivo nuevo, la lista de "failed"
 conocidos no debería, salvo que se agregue un test nuevo que use la misma
 forma de 2 argumentos con una excepción real esperada;
@@ -191,4 +191,20 @@ puede vender por ahí, cualquiera sea su código; K1-K9 prueba estructural
 disponibilidad por sede/Web, `requires_billing`, y precio configurables sin
 tocar una sola línea de código) — +7 quirks nuevos (`throws_ok` de 2
 argumentos, mismo patrón que el resto de la suite: I5b, I7a, I8, I9, J2, K3b,
-K4, todos rechazos esperados) — 77/784 a partir de acá.
+K4, todos rechazos esperados) — 77/784 a partir de acá. Actualizado una vez
+más con el circuito de pago/facturación de `create_web_order` (Checkpoint
+2.1, `20260201000071_web_order_payment_fulfillment.sql` — extiende
+`create_web_order` con `p_payment_status`/`p_payment_account_id`/
+`p_fulfillment_type` opcionales, default null, sin tocar `fn_create_sale_core`;
+V1 solo soporta SHIPPING, nunca expuesto en el contrato público de
+`POST /api/integrations/web-orders` — el route handler decide internamente.
+De paso corrige un bug real encontrado probando el circuito completo:
+`mark_web_order_paid` (20260201000057) nunca se había actualizado en la
+migración 69 y seguía con el mismo `IN` hardcodeado de códigos que
+`fn_create_sale_core`/`create_sale_exchange` ya habían dejado atrás —
+afectaba a CARD_6 y a cualquier condición nueva creada desde
+`/admin/condiciones-precio`, no solo a "2 cuotas sin interés". Sección L de
+`price_conditions_admin.test.sql`, +19 casos — L13/L14/L15, `throws_ok` de 2
+argumentos sobre rechazos esperados (PAID sin cuenta, Web deshabilitada,
+SHIPPING fuera de Depósito), mismo patrón que el resto de la suite) —
+80/803 a partir de acá.
