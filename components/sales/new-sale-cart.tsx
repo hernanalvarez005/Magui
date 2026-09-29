@@ -538,7 +538,7 @@ export function NewSaleCart({
                       className={cn(
                         "rounded-xl border-2 px-3 py-2.5 text-sm font-semibold transition-colors",
                         paymentStatus === "PAID"
-                          ? "border-success bg-success/10 text-success-foreground"
+                          ? "border-success bg-success/10 text-success"
                           : "border-border text-muted-foreground hover:bg-accent"
                       )}
                     >
