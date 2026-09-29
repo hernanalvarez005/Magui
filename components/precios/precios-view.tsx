@@ -6,6 +6,7 @@ import { Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/shared/empty-state";
+import { sortConditionsForMatrix } from "@/lib/pricing/condition-order";
 import { sortPromoFirst } from "@/lib/precios-sort";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import type { PromotionType } from "@/types/database";
@@ -20,6 +21,8 @@ interface PriceConditionLite {
   id: string;
   code: string;
   name: string;
+  rule_type: string;
+  priority: number;
 }
 interface ProductPriceLite {
   product_id: string;
@@ -43,11 +46,13 @@ interface PromotionProductLite {
   product_id: string;
 }
 
-// Mismo orden/columnas que la sección 6 del pedido. Ver comentario en
-// page.tsx sobre por qué son estas condiciones y no todas las que muestra
-// Administración. Migración 67: INSTALLMENTS_6 (6 cuotas sin interés)
-// agregada al final — mismo criterio que INSTALLMENTS_3.
-const DISPLAY_CODES = ["LIST", "CASH", "TRANSFER", "CARD_1", "INSTALLMENTS_3", "INSTALLMENTS_6"];
+// Override PURAMENTE cosmético: abrevia el label de columna para las
+// condiciones históricas conocidas en este grid angosto (ej. "Tarjeta de
+// crédito — 1 pago" -> "1 pago"). NUNCA decide qué condiciones se muestran
+// ni en qué orden — eso es 100% data-driven (ver orderedDisplayConditions
+// más abajo, mismo criterio que /admin/precios). Una condición nueva sin
+// entrada acá cae al fallback `condition.name` (su nombre real completo),
+// nunca queda invisible por no estar en este mapa.
 const CONDITION_LABELS: Record<string, string> = {
   LIST: "Lista",
   CASH: "Efectivo",
@@ -153,13 +158,14 @@ export function PreciosView({
     return map;
   }, [productPrices]);
 
-  const orderedDisplayConditions = useMemo(
-    () =>
-      DISPLAY_CODES.map((code) => priceConditions.find((c) => c.code === code)).filter(
-        (c): c is PriceConditionLite => !!c
-      ),
-    [priceConditions]
-  );
+  // Data-driven (cierre de inconsistencia post-release): antes filtraba por
+  // un DISPLAY_CODES local, que dejaba afuera cualquier condición nueva
+  // creada desde /admin/condiciones-precio. `priceConditions` ya viene
+  // filtrada por rule_type BASE/PAYMENT_METHOD desde page.tsx — acá solo
+  // queda ordenarla, reusando el mismo criterio (BASE primero, resto por
+  // priority ascendente) que ya usa /admin/precios, sin una segunda copia
+  // de esa lógica de orden.
+  const orderedDisplayConditions = useMemo(() => sortConditionsForMatrix(priceConditions), [priceConditions]);
 
   const participantsByPromotion = useMemo(() => {
     const map = new Map<string, ProductLite[]>();

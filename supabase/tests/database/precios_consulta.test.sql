@@ -8,7 +8,7 @@
 -- seller en ninguna — este archivo prueba que eso sigue siendo así.
 -- Correr con: supabase test db  (requiere Supabase CLI + Docker)
 begin;
-select plan(12);
+select plan(15);
 
 insert into auth.users (id, email) values
   ('f5000000-0000-0000-0000-000000000001', 'admin.precios@test.maguirejuve.com'),
@@ -63,6 +63,26 @@ select set_promotion_products(
   (select id from promotions where code = 'TEST-PC-3X2'),
   array[(select id from products where sku = 'KIT-VN')]
 );
+
+-- Fixtures para el cierre de inconsistencia post-release: /precios pasó de
+-- filtrar por un DISPLAY_CODES hardcodeado a filtrar por rule_type
+-- (active=true AND rule_type IN ('BASE','PAYMENT_METHOD')) — mismo criterio
+-- que create_price_condition ya usa siempre para condiciones nuevas desde
+-- /admin/condiciones-precio. Se simula acá una condición PAYMENT_METHOD
+-- "futura" (code y nombre nunca vistos antes, ej. una hipotética "9 cuotas
+-- sin interés") y una QUANTITY nueva, para probar el filtro en sí — nunca
+-- un code específico hardcodeado en la prueba ni en la pantalla.
+insert into public.payment_methods (code, name, active, requires_billing, sort_order)
+values ('TEST-PC-FUTURA', 'Condición de pago futura de prueba', true, false, 999);
+
+insert into public.price_conditions (code, name, rule_type, payment_method_id, discount_percent, priority, combinable, active)
+values (
+  'TEST-PC-FUTURA', '9 cuotas sin interés (condición futura de prueba)', 'PAYMENT_METHOD',
+  (select id from payment_methods where code = 'TEST-PC-FUTURA'), 0, 50, false, true
+);
+
+insert into public.price_conditions (code, name, rule_type, min_units, discount_percent, priority, combinable, active)
+values ('TEST-PC-QTY', 'Descuento por cantidad de prueba', 'QUANTITY', 5, 0.10, 51, false, true);
 
 set role authenticated;
 select set_config('request.jwt.claim.sub', 'f5000000-0000-0000-0000-000000000002', false);
@@ -227,6 +247,37 @@ select is(
   (select discount_percent from promotions where code = 'TEST-PC-ACTIVE'),
   0.25,
   'Permisos 12: la vendedora no puede modificar una promoción existente — el UPDATE queda en 0 filas por RLS'
+);
+
+-- ---------------------------------------------------------------------------
+-- Condiciones 13-15: /precios filtra por rule_type (active=true AND rule_type
+-- IN ('BASE','PAYMENT_METHOD')), no por un allowlist de codes — mismo query
+-- que app/(app)/precios/page.tsx. El orden (BASE primero, resto por
+-- priority) es responsabilidad de sortConditionsForMatrix(), ya cubierto en
+-- tests/condition-order.test.ts (Vitest) — no se duplica acá.
+-- ---------------------------------------------------------------------------
+select ok(
+  exists(
+    select 1 from price_conditions
+    where code = 'TEST-PC-FUTURA' and active = true and rule_type in ('BASE', 'PAYMENT_METHOD')
+  ),
+  'Condiciones 13: una condición PAYMENT_METHOD nueva/desconocida (nunca hardcodeada en la pantalla ni en este test) pasa el filtro de /precios'
+);
+
+select ok(
+  not exists(
+    select 1 from price_conditions
+    where code = 'TEST-PC-QTY' and active = true and rule_type in ('BASE', 'PAYMENT_METHOD')
+  ),
+  'Condiciones 14: una condición QUANTITY no pasa el filtro de /precios (no es "el precio de este producto")'
+);
+
+select ok(
+  exists(
+    select 1 from price_conditions
+    where rule_type = 'BASE' and active = true and rule_type in ('BASE', 'PAYMENT_METHOD')
+  ),
+  'Condiciones 15: la condición BASE (Lista) sigue pasando el filtro de /precios'
 );
 
 select * from finish();
