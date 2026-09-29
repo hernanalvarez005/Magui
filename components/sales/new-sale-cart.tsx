@@ -112,6 +112,7 @@ export function NewSaleCart({
   products,
   promotions,
   allowedPaymentMethodIds,
+  unavailablePaymentMethodIds,
   quote,
   quoting,
   onRemoveItem,
@@ -171,6 +172,10 @@ export function NewSaleCart({
    * legacy sin configurar, o canal Web). [] = intersección vacía entre
    * varias promociones del carrito — ningún medio confirma la venta. */
   allowedPaymentMethodIds: string[] | null;
+  /** Medios de pago sin condición de precio habilitada para la sede/canal
+   * actual (Condiciones de precio administrables, migración 69/70) —
+   * restricción estructural, no transitoria como la de promociones. */
+  unavailablePaymentMethodIds: string[];
   quote: PricingQuoteResult | null;
   quoting: boolean;
   onRemoveItem: (productId: string) => void;
@@ -244,6 +249,8 @@ export function NewSaleCart({
   // mensaje que "medio no permitido", cubre los dos casos.
   else if (allowedPaymentMethodIds !== null && !allowedPaymentMethodIds.includes(paymentMethodId)) {
     issues.push("Este método de pago no está disponible para esta promoción.");
+  } else if (unavailablePaymentMethodIds.includes(paymentMethodId)) {
+    issues.push("Esta forma de pago no está habilitada en esta sucursal/canal.");
   }
   if (requiresBilling && !customer?.dni) issues.push("Para este medio de pago necesitás asociar un cliente con DNI.");
   if (requiresPaymentAccount && !paymentAccountId) issues.push("Elegí la cuenta donde ingresó el dinero.");
@@ -583,16 +590,23 @@ export function NewSaleCart({
                       // carrito, con 🔒 para dejar claro que es la promo, no
                       // que el medio dejó de existir en el sistema.
                       const disabledByPromotion = allowedPaymentMethodIds !== null && !allowedPaymentMethodIds.includes(pm.id);
+                      const disabledBySede = !disabledByPromotion && unavailablePaymentMethodIds.includes(pm.id);
+                      const disabled = disabledByPromotion || disabledBySede;
+                      const lockReason = disabledByPromotion
+                        ? "No disponible con esta promoción"
+                        : disabledBySede
+                          ? "No habilitada en esta sucursal/canal"
+                          : undefined;
                       return (
                         <button
                           key={pm.id}
                           type="button"
-                          disabled={disabledByPromotion}
+                          disabled={disabled}
                           onClick={() => onPaymentMethodChange(pm.id)}
-                          title={disabledByPromotion ? "No disponible con esta promoción" : undefined}
+                          title={lockReason}
                           className={cn(
                             "flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl border-2 px-2 py-2.5 text-center text-xs font-medium leading-tight transition-colors",
-                            disabledByPromotion
+                            disabled
                               ? "cursor-not-allowed border-border/60 text-muted-foreground/50"
                               : active
                                 ? "border-primary bg-primary/10 text-primary"
@@ -601,9 +615,7 @@ export function NewSaleCart({
                         >
                           <Icon className="size-5 shrink-0" />
                           <span className="text-balance">{pm.name}</span>
-                          {disabledByPromotion ? (
-                            <span className="text-[10px] leading-none">🔒 No disponible con esta promoción</span>
-                          ) : null}
+                          {lockReason ? <span className="text-[10px] leading-none">🔒 {lockReason}</span> : null}
                         </button>
                       );
                     })}

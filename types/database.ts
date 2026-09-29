@@ -940,6 +940,23 @@ export type Database = {
         Update: Partial<PriceConditionRow>;
         Relationships: [];
       };
+      // Disponibilidad de condiciones de precio (migración 69, Condiciones de
+      // precio administrables) — se escriben exclusivamente vía
+      // create_price_condition/update_price_condition (reemplazo completo),
+      // igual criterio que promotion_products/promotion_payment_methods:
+      // insert/delete directo disponible por RLS, la UI de admin nunca lo usa.
+      price_condition_locations: {
+        Row: PriceConditionLocationRow;
+        Insert: { price_condition_id: string; location_id: string } & Partial<PriceConditionLocationRow>;
+        Update: Partial<PriceConditionLocationRow>;
+        Relationships: [];
+      };
+      price_condition_sales_channels: {
+        Row: PriceConditionSalesChannelRow;
+        Insert: { price_condition_id: string; sales_channel_id: string } & Partial<PriceConditionSalesChannelRow>;
+        Update: Partial<PriceConditionSalesChannelRow>;
+        Relationships: [];
+      };
       product_prices: {
         Row: ProductPriceRow;
         Insert: { product_id: string; price_condition_id: string; amount: string } &
@@ -1164,6 +1181,34 @@ export type Database = {
           p_valid_from?: string;
         };
         Returns: ProductPriceRow;
+      };
+      // Condiciones de precio administrables (migración 69/70) — alta y
+      // edición atómicas, ver comentarios de cabecera de ambas migraciones.
+      create_price_condition: {
+        Args: {
+          p_name: string;
+          p_discount_percent: number;
+          p_requires_billing: boolean;
+          p_location_codes: string[];
+          p_available_web: boolean;
+          p_active?: boolean;
+          p_copy_prices_from_code?: string;
+          p_priority?: number | null;
+        };
+        Returns: CreatePriceConditionResult;
+      };
+      update_price_condition: {
+        Args: {
+          p_price_condition_id: string;
+          p_name: string;
+          p_discount_percent: number;
+          p_requires_billing: boolean;
+          p_priority: number;
+          p_active: boolean;
+          p_location_codes: string[];
+          p_available_web: boolean;
+        };
+        Returns: { price_condition_id: string; payment_method_id: string };
       };
       clear_product_price: {
         Args: {

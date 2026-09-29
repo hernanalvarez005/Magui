@@ -74,6 +74,11 @@ interface PromotionOption {
   group_size: number;
   minimum_quantity: number | null;
 }
+interface PriceConditionAvailability {
+  paymentMethodId: string;
+  locationIds: string[];
+  web: boolean;
+}
 
 /**
  * Nueva Venta — pantalla principal (rediseño UX "carrito unificado").
@@ -103,6 +108,7 @@ export function NewSaleClient({
   products,
   promotions,
   promotionPaymentMethodIds,
+  priceConditionAvailability,
   isAdmin,
 }: {
   seller: { id: string; fullName: string };
@@ -116,6 +122,10 @@ export function NewSaleClient({
   /** promotion_id -> ids de medios de pago permitidos. Ausente/[] = legacy
    * sin configurar, no restringe nada (ver 20260201000063). */
   promotionPaymentMethodIds: Record<string, string[]>;
+  /** Un medio de pago sin entrada acá no tiene condición de precio propia
+   * (ej. Efectivo) — cae siempre al precio LIST/BASE, sin restricción de
+   * sede/canal. Ver Condiciones de precio administrables (migración 69/70). */
+  priceConditionAvailability: PriceConditionAvailability[];
   isAdmin: boolean;
 }) {
   const supabase = useMemo(() => createClient(), []);
@@ -399,6 +409,44 @@ export function NewSaleClient({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(allowedPaymentMethodIds), paymentMethodId]);
+
+  // Disponibilidad de condiciones de precio por sede/canal (Condiciones de
+  // precio administrables, migración 69/70): a diferencia de la restricción
+  // por promoción (arriba, transitoria según el carrito), esta es
+  // estructural — la configura un admin en /admin/condiciones-precio. Un
+  // medio sin condición propia configurada (ej. Efectivo) cae siempre al
+  // precio LIST/BASE, que no tiene restricción. El backend
+  // (fn_create_sale_core -> fn_price_condition_available) es la autoridad
+  // real; esto es solo para no dejar elegir acá algo que el servidor
+  // igual va a rechazar.
+  const availabilityByPaymentMethodId = useMemo(
+    () => new Map(priceConditionAvailability.map((a) => [a.paymentMethodId, a])),
+    [priceConditionAvailability]
+  );
+  const unavailablePaymentMethodIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const pm of paymentMethods) {
+      const availability = availabilityByPaymentMethodId.get(pm.id);
+      if (!availability) continue;
+      const available = isWeb ? availability.web : availability.locationIds.includes(locationId);
+      if (!available) ids.push(pm.id);
+    }
+    return ids;
+  }, [paymentMethods, availabilityByPaymentMethodId, isWeb, locationId]);
+
+  // Cambiar de sede o de canal puede dejar sin efecto el medio ya elegido
+  // (ej. "2 cuotas sin interés" habilitada en Sede 25 pero no en Sede 37) —
+  // se limpia y se avisa, nunca se confirma en silencio con una combinación
+  // que el backend va a rechazar igual.
+  useEffect(() => {
+    if (!paymentMethodId) return;
+    if (unavailablePaymentMethodIds.includes(paymentMethodId)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPaymentMethodId("");
+      toast.error("Esta forma de pago no está habilitada en esta sucursal/canal.");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(unavailablePaymentMethodIds), paymentMethodId]);
 
   function setQuantity(productId: string, quantity: number) {
     // Feedback breve (sección 8 del pedido "no abrir carrito automáticamente")
@@ -691,6 +739,7 @@ export function NewSaleClient({
         products={products}
         promotions={promotions}
         allowedPaymentMethodIds={allowedPaymentMethodIds}
+        unavailablePaymentMethodIds={unavailablePaymentMethodIds}
         quote={quote}
         quoting={quoting}
         onRemoveItem={(id) => setQuantity(id, 0)}
