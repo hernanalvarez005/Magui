@@ -3,13 +3,10 @@
 import { useState } from "react";
 import {
   AlertTriangle,
-  Banknote,
   ChevronDown,
   ClipboardCopy,
-  CreditCard,
   Gift,
   History,
-  Landmark,
   Loader2,
   ShoppingCart,
   UserRound,
@@ -28,6 +25,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { CustomerPickerFields, type CustomerOption } from "@/components/sales/customer-picker-dialog";
 import { useMediaQuery } from "@/lib/hooks/use-media-query";
+import { resolvePaymentMethodIcon } from "@/lib/pricing/payment-method-icon";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { FreeSaleReason, PricingQuoteResult, SalePaymentStatus } from "@/types/database";
 
@@ -65,14 +63,6 @@ interface PaymentAccountOption {
   name: string;
   alias: string | null;
 }
-
-const PAYMENT_ICONS: Record<string, React.ElementType> = {
-  CASH: Banknote,
-  TRANSFER: Landmark,
-  CARD_3: CreditCard,
-  CARD_1: CreditCard,
-  CARD_6: CreditCard,
-};
 
 const FREE_SALE_REASONS: { value: FreeSaleReason; label: string }[] = [
   { value: "GIFT", label: "Regalo" },
@@ -548,7 +538,7 @@ export function NewSaleCart({
                       className={cn(
                         "rounded-xl border-2 px-3 py-2.5 text-sm font-semibold transition-colors",
                         paymentStatus === "PAID"
-                          ? "border-success bg-success/10 text-success-foreground"
+                          ? "border-success bg-success/10 text-success"
                           : "border-border text-muted-foreground hover:bg-accent"
                       )}
                     >
@@ -582,7 +572,7 @@ export function NewSaleCart({
                   <Label className="text-sm">Medio de pago</Label>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {paymentMethods.map((pm) => {
-                      const Icon = PAYMENT_ICONS[pm.code] ?? Banknote;
+                      const Icon = resolvePaymentMethodIcon(pm);
                       const active = pm.id === paymentMethodId;
                       // Todos los medios quedan siempre visibles — nunca
                       // desaparecen del selector — solo se deshabilitan los
