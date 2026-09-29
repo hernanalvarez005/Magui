@@ -77,9 +77,37 @@ export type PaymentMethodRow = {
   code: string;
   name: string;
   active: boolean;
+  // Reemplaza el IN hardcodeado de códigos que vivía en fn_create_sale_core/
+  // create_sale_exchange (migración 69) — si TRUE, una venta con este medio
+  // exige cliente con DNI + cuenta de ingreso + billing_status.
+  requires_billing: boolean;
   sort_order: number;
   created_at: string;
   updated_at: string;
+};
+
+// Disponibilidad de una condición de precio — dos junction tables genéricas
+// (migración 69): por sede (stock_locations) y por canal (sales_channels).
+// Nunca columnas boolean con nombre de sede/canal hardcodeado.
+export type PriceConditionLocationRow = {
+  price_condition_id: string;
+  location_id: string;
+  created_at: string;
+};
+
+export type PriceConditionSalesChannelRow = {
+  price_condition_id: string;
+  sales_channel_id: string;
+  created_at: string;
+};
+
+export type CreatePriceConditionResult = {
+  price_condition_id: string;
+  payment_method_id: string;
+  price_condition_code: string;
+  payment_method_code: string;
+  copied_prices_count: number;
+  skipped_products: { id: string; sku: string; name: string }[];
 };
 
 export type PaymentAccountRow = {
@@ -179,6 +207,12 @@ export type SaleRow = {
   doctor_id: string | null;
   payment_method_id: string;
   applied_price_condition_id: string | null;
+  // Nombre de price_conditions al momento de esta venta — nunca se reescribe
+  // si más adelante se edita el nombre de la condición. NULL para ventas
+  // anteriores a la migración 69, o si la venta fue 100% precio manual
+  // (sin condición resuelta) — ahí la UI cae a resolver por JOIN contra
+  // price_conditions vigente.
+  price_condition_name_snapshot: string | null;
   subtotal: string;
   discount_total: string;
   // Recargo comercial: una condición de pago más cara que Lista (ej. cuotas)

@@ -8,10 +8,13 @@
 --   F. "2 cuotas sin interés" (caso inmediato, sembrado por la migración) — 4 casos.
 --   G. Permisos de create_price_condition — 2 casos.
 --   H. Regresión — condiciones/medios existentes sin cambios — 4 casos.
+--   I. update_price_condition — edición atómica (migración 70) — 15 casos.
+--   J. Web real vía create_web_order (mismo camino que la ruta externa) — 2 casos.
+--   K. "9 cuotas test" — prueba estructural data-driven, condición ficticia — 9 casos.
 -- Correr con: rebuild local (preamble + seed_026_skus antes de la migración
 -- 26) + pg_prove.
 begin;
-select plan(33);
+select plan(59);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: admin con acceso a ambas sedes, vendedora sin permisos de
@@ -130,6 +133,7 @@ select create_price_condition(
   'PCA Futura Billing False', 0, false, array['SED-25', 'SED-37'], true
 ) as pca_future_false_result \gset
 select (:'pca_future_false_result'::jsonb ->> 'payment_method_id')::uuid as pca_future_false_pm_id \gset
+select (:'pca_future_false_result'::jsonb ->> 'price_condition_id')::uuid as pca_future_false_pc_id \gset
 
 select is(
   (
@@ -404,6 +408,293 @@ select throws_ok(
     (select id from products where sku = 'PCA-N'), :'sed25_id', :'branch_channel_id', :'card6_id', :'customer_id'
   ),
   'H4: regresión CARD_6 — sigue exigiendo cuenta de ingreso'
+);
+
+-- ===========================================================================
+-- SECCIÓN I — update_price_condition (Checkpoint 2, migración 70). Edición
+-- atómica; nunca toca code/rule_type/payment_method_id/product_prices.
+-- ===========================================================================
+select create_price_condition(
+  'PCA Editable', 0, true, array['SED-25'], false
+) as pca_edit_result \gset
+select (:'pca_edit_result'::jsonb ->> 'price_condition_id')::uuid as pca_edit_pc_id \gset
+select (:'pca_edit_result'::jsonb ->> 'payment_method_id')::uuid as pca_edit_pm_id \gset
+
+select update_price_condition(:'pca_edit_pc_id'::uuid, 'PCA Editada', 0, true, 1, true, array['SED-25'], false);
+
+select is(
+  (select name from price_conditions where id = :'pca_edit_pc_id'::uuid),
+  'PCA Editada',
+  'I1: update_price_condition actualiza price_conditions.name'
+);
+
+select is(
+  (select name from payment_methods where id = :'pca_edit_pm_id'::uuid),
+  'PCA Editada',
+  'I2: update_price_condition actualiza payment_methods.name en lockstep (dashboard etiqueta por acá)'
+);
+
+select update_price_condition(:'pca_edit_pc_id'::uuid, 'PCA Editada', 0, false, 1, true, array['SED-25'], false);
+select is(
+  (select requires_billing from payment_methods where id = :'pca_edit_pm_id'::uuid),
+  false,
+  'I3: update_price_condition puede apagar requires_billing — sin cambio de código'
+);
+select is(
+  (
+    (create_sale(
+      jsonb_build_array(jsonb_build_object('product_id', (select id from products where sku = 'PCA-N'), 'quantity', 1)),
+      :'sed25_id', :'branch_channel_id', :'pca_edit_pm_id', null, null, null, null, null, clock_timestamp(),
+      false, null, null, false, null
+    ) ->> 'billing_status')
+  ),
+  'NOT_REQUIRED',
+  'I3b: tras apagar requires_billing, una venta nueva ya no exige cuenta de ingreso'
+);
+
+-- I4: agregar Sede 37 a la disponibilidad -> ahora sí acepta ahí.
+select update_price_condition(:'pca_edit_pc_id'::uuid, 'PCA Editada', 0, false, 1, true, array['SED-25', 'SED-37'], false);
+select ok(
+  (create_sale(
+    jsonb_build_array(jsonb_build_object('product_id', (select id from products where sku = 'PCA-N'), 'quantity', 1)),
+    :'sed37_id', :'branch_channel_id', :'pca_edit_pm_id', null, null, null, null, null, clock_timestamp(),
+    false, null, null, false, null
+  ) ->> 'sale_id') is not null,
+  'I4: editar disponibilidad agregando Sede 37 -> una venta nueva ahí ya no se rechaza'
+);
+
+-- I5: habilitar Web, después deshabilitarlo -> vuelve a rechazar.
+select update_price_condition(:'pca_edit_pc_id'::uuid, 'PCA Editada', 0, false, 1, true, array['SED-25', 'SED-37'], true);
+select ok(
+  (create_sale(
+    jsonb_build_array(jsonb_build_object('product_id', (select id from products where sku = 'PCA-N'), 'quantity', 1)),
+    :'sed25_id', :'web_channel_id', :'pca_edit_pm_id', :'customer_id', null, null, null, null, clock_timestamp(),
+    false, null, null, false, null, 'PICKUP'::sale_fulfillment_type, 'PAID'::sale_payment_status
+  ) ->> 'sale_id') is not null,
+  'I5a: habilitar Web -> una venta Web nueva la acepta'
+);
+select update_price_condition(:'pca_edit_pc_id'::uuid, 'PCA Editada', 0, false, 1, true, array['SED-25', 'SED-37'], false);
+select throws_ok(
+  format(
+    $$select create_sale(
+      jsonb_build_array(jsonb_build_object('product_id', '%s'::uuid, 'quantity', 1)),
+      '%s'::uuid, '%s'::uuid, '%s'::uuid, '%s'::uuid, null, null, null, null, clock_timestamp(),
+      false, null, null, false, null, 'PICKUP'::sale_fulfillment_type, 'PAID'::sale_payment_status
+    )$$,
+    (select id from products where sku = 'PCA-N'), :'sed25_id', :'web_channel_id', :'pca_edit_pm_id', :'customer_id'
+  ),
+  'I5b: volver a deshabilitar Web -> una venta Web nueva vuelve a ser rechazada'
+);
+
+-- I6: desactivar -> fn_pricing_quote ya no la resuelve (deja de ser elegible
+-- para ventas NUEVAS), pero no exige tocar nada histórico acá (eso ya lo
+-- cubre la Sección E, snapshot).
+select update_price_condition(:'pca_edit_pc_id'::uuid, 'PCA Editada', 0, false, 1, false, array['SED-25', 'SED-37'], false);
+select is(
+  (select active from price_conditions where id = :'pca_edit_pc_id'::uuid),
+  false,
+  'I6a: update_price_condition puede desactivar la condición'
+);
+select is(
+  (select active from payment_methods where id = :'pca_edit_pm_id'::uuid),
+  false,
+  'I6b: desactivar la condición desactiva el payment_method en lockstep (deja de listarse en Nueva Venta)'
+);
+
+-- I7: atomicidad — sede inválida aborta TODO, el nombre/disponibilidad ya
+-- editados en I1-I6 quedan intactos, no a medio aplicar.
+select throws_ok(
+  format($$select update_price_condition('%s'::uuid, 'PCA Rota Edit', 0, true, 1, true, array['SEDE-INEXISTENTE'], true)$$, :'pca_edit_pc_id'),
+  'I7a: update_price_condition con sede inválida rechaza toda la operación'
+);
+select is(
+  (select name from price_conditions where id = :'pca_edit_pc_id'::uuid),
+  'PCA Editada',
+  'I7b: tras el fallo de I7a, el nombre NO cambió a "PCA Rota Edit" (rollback completo, no parcial)'
+);
+select is(
+  (select active from price_conditions where id = :'pca_edit_pc_id'::uuid),
+  false,
+  'I7c: tras el fallo de I7a, "active" tampoco volvió a true — ningún campo quedó a medio aplicar'
+);
+
+-- I8: permisos — no-admin no puede editar (RLS real vía is_admin(), no solo UI oculta).
+select set_config('request.jwt.claim.sub', 'aca00000-0000-0000-0000-000000000002', false); -- vendedora
+select throws_ok(
+  format($$select update_price_condition('%s'::uuid, 'Hackeada', 0, true, 1, true, array['SED-25'], true)$$, :'pca_edit_pc_id'),
+  'I8: una vendedora (no-admin) NO puede editar una condición de precio'
+);
+select set_config('request.jwt.claim.sub', 'aca00000-0000-0000-0000-000000000001', false); -- admin de nuevo
+
+-- I9: la condición BASE/LIST no es editable desde acá.
+select throws_ok(
+  format($$select update_price_condition('%s'::uuid, 'Lista Hackeada', 0, true, 1, true, array['SED-25'], true)$$,
+    (select id from price_conditions where code = 'LIST')),
+  'I9: update_price_condition rechaza editar la condición BASE/LIST'
+);
+
+-- I10: editar NUNCA modifica ningún precio ya cargado en product_prices.
+select is(
+  (select amount from product_prices where product_id = (select id from products where sku = 'PCA-N') and price_condition_id = :'pca_price_pc_id'::uuid and active),
+  7777::numeric,
+  'I10: editar una condición distinta (PCA Editada) no modifica los precios de otra condición (PCA Precio Inicial) — precios exclusivos de la matriz'
+);
+
+-- ===========================================================================
+-- SECCIÓN J — Web real, mismo camino que /api/integrations/web-orders:
+-- create_web_order (revocada de authenticated/anon a propósito, exclusiva de
+-- service_role — se prueba con "reset role" para simular esa llamada
+-- server-to-server real, sin tocar el contrato externo de la ruta).
+--
+-- Nota (hallazgo, no bug de esta feature): create_web_order() nunca expuso
+-- p_payment_account_id ni p_payment_status en su firma (20260101000016), así
+-- que siempre los pasa NULL a fn_create_sale_core — que exige una cuenta de
+-- ingreso apenas p_payment_status sea distinto de 'PENDING' (NULL lo es).
+-- Por eso NINGUNA condición con requires_billing=true puede venderse hoy vía
+-- create_web_order, sea cual sea su código — limitación estructural
+-- preexistente y ajena a esta feature (el flujo Web real para condiciones
+-- con facturación es create_sale con canal=WEB desde Nueva Venta, que sí
+-- expone esos parámetros). Por eso esta sección usa "PCA Futura Billing
+-- False" (Sección A, requires_billing=false, Web ya habilitada) en vez de
+-- "2 cuotas sin interés", para aislar la prueba de disponibilidad Web de esa
+-- limitación no relacionada.
+-- ===========================================================================
+select set_stock(:'sed25_id'::uuid, (select id from products where sku = 'PROD-NIAC'), 100, 'RECEPTION');
+reset role;
+select is(
+  (
+    (create_web_order(
+      jsonb_build_array(jsonb_build_object('product_id', (select id from products where sku = 'PROD-NIAC'), 'quantity', 1)),
+      :'sed25_id'::uuid, :'pca_future_false_pm_id'::uuid, 'test-integration', 'PCA-WEB-ORDER-001'
+    ) ->> 'sale_id') is not null
+  ),
+  true,
+  'J1: create_web_order (mismo camino real que /api/integrations/web-orders) acepta una condición habilitada para Web'
+);
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'aca00000-0000-0000-0000-000000000001', false);
+
+-- Admin deshabilita Web para "PCA Futura Billing False".
+select update_price_condition(
+  :'pca_future_false_pc_id'::uuid, 'PCA Futura Billing False', 0, false, 1,
+  true, array['SED-25', 'SED-37'], false
+);
+
+reset role;
+select throws_ok(
+  format(
+    $$select create_web_order(
+      jsonb_build_array(jsonb_build_object('product_id', '%s'::uuid, 'quantity', 1)),
+      '%s'::uuid, '%s'::uuid, 'test-integration', 'PCA-WEB-ORDER-002'
+    )$$,
+    (select id from products where sku = 'PROD-NIAC'), :'sed25_id', :'pca_future_false_pm_id'
+  ),
+  'J2: tras deshabilitar Web, create_web_order con la misma condición es RECHAZADA (mismo punto central, sin bypass)'
+);
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'aca00000-0000-0000-0000-000000000001', false);
+
+-- Deja "PCA Futura Billing False" tal como estaba (Sede 25/Sede 37/Web) para no afectar otras secciones/tests que corran después en la misma base.
+select update_price_condition(
+  :'pca_future_false_pc_id'::uuid, 'PCA Futura Billing False', 0, false, 1,
+  true, array['SED-25', 'SED-37'], true
+);
+
+-- ===========================================================================
+-- SECCIÓN K — Prueba estructural: "9 cuotas test", condición FICTICIA creada
+-- exclusivamente para este test, para demostrar que la arquitectura es
+-- verdaderamente data-driven (no que "2 cuotas" funciona porque tiene algo
+-- especial). Todo el recorrido sin tocar ni una línea de código.
+-- ===========================================================================
+select create_price_condition(
+  '9 cuotas test', 0.05, true, array['SED-25'], false
+) as k9_result \gset
+select (:'k9_result'::jsonb ->> 'price_condition_id')::uuid as k9_pc_id \gset
+select (:'k9_result'::jsonb ->> 'payment_method_id')::uuid as k9_pm_id \gset
+select (:'k9_result'::jsonb ->> 'price_condition_code') as k9_pc_code \gset
+select (:'k9_result'::jsonb ->> 'payment_method_code') as k9_pm_code \gset
+
+select isnt(
+  :'k9_pc_code'::text, '9 cuotas test'::text,
+  'K1a: "9 cuotas test" recibe un code técnico autogenerado, nunca igual al nombre'
+);
+select ok(
+  :'k9_pc_code' like 'PC-%' and length(:'k9_pc_code') = 35,
+  'K1b: el code generado sigue el patrón técnico (PC-<32 hex>), no algo tipeado a mano'
+);
+
+select is(
+  (select requires_billing from payment_methods where id = :'k9_pm_id'::uuid),
+  true,
+  'K2: "9 cuotas test" configurable con requires_billing=true, sin cambio de código'
+);
+
+select set_stock(:'sed25_id'::uuid, (select id from products where sku = 'PCA-N'), 100, 'RECEPTION');
+
+-- K3: habilitada SOLO Sede 25 -> Sede 37 la rechaza.
+select ok(
+  (create_sale(
+    jsonb_build_array(jsonb_build_object('product_id', (select id from products where sku = 'PCA-N'), 'quantity', 1)),
+    :'sed25_id', :'branch_channel_id', :'k9_pm_id', :'customer_id', null, null, null, null, clock_timestamp(),
+    false, null, null, false, :'account_id'
+  ) ->> 'sale_id') is not null,
+  'K3a: "9 cuotas test" habilitada en Sede 25 -> acepta'
+);
+select throws_ok(
+  format(
+    $$select create_sale(
+      jsonb_build_array(jsonb_build_object('product_id', '%s'::uuid, 'quantity', 1)),
+      '%s'::uuid, '%s'::uuid, '%s'::uuid, '%s'::uuid, null, null, null, null, clock_timestamp(),
+      false, null, null, false, '%s'::uuid
+    )$$,
+    (select id from products where sku = 'PCA-N'), :'sed37_id', :'branch_channel_id', :'k9_pm_id', :'customer_id', :'account_id'
+  ),
+  'K3b: "9 cuotas test" NO habilitada en Sede 37 -> rechaza, sin ningún hardcode de "Sede 37" en el código'
+);
+
+-- K4: deshabilitada para Web desde la creación -> Web la rechaza.
+select throws_ok(
+  format(
+    $$select create_sale(
+      jsonb_build_array(jsonb_build_object('product_id', '%s'::uuid, 'quantity', 1)),
+      '%s'::uuid, '%s'::uuid, '%s'::uuid, '%s'::uuid, null, null, null, null, clock_timestamp(),
+      false, null, null, false, '%s'::uuid, 'PICKUP'::sale_fulfillment_type, 'PAID'::sale_payment_status
+    )$$,
+    (select id from products where sku = 'PCA-N'), :'sed25_id', :'web_channel_id', :'k9_pm_id', :'customer_id', :'account_id'
+  ),
+  'K4: "9 cuotas test" no habilitada para Web -> rechaza'
+);
+
+-- K5: se habilita Web después, vía la misma RPC de edición -> ahora acepta.
+select update_price_condition(:'k9_pc_id'::uuid, '9 cuotas test', 0.05, true, 1, true, array['SED-25'], true);
+select ok(
+  (create_sale(
+    jsonb_build_array(jsonb_build_object('product_id', (select id from products where sku = 'PCA-N'), 'quantity', 1)),
+    :'sed25_id', :'web_channel_id', :'k9_pm_id', :'customer_id', null, null, null, null, clock_timestamp(),
+    false, null, null, false, :'account_id', 'PICKUP'::sale_fulfillment_type, 'PAID'::sale_payment_status
+  ) ->> 'sale_id') is not null,
+  'K5: tras habilitar Web con update_price_condition, "9 cuotas test" ahora SÍ acepta Web'
+);
+
+-- K6: recibe precio con la RPC genérica ya existente (misma que usa la Matriz).
+select set_product_price((select id from products where sku = 'PCA-N2'), :'k9_pc_id'::uuid, 4242, clock_timestamp());
+select is(
+  (select amount from product_prices where product_id = (select id from products where sku = 'PCA-N2') and price_condition_id = :'k9_pc_id'::uuid and active),
+  4242::numeric,
+  'K6: "9 cuotas test" recibe precios normalmente desde la matriz (set_product_price), sin cambio de código'
+);
+
+-- K7: se usa en una venta válida, cotizando el precio recién cargado.
+select is(
+  (
+    (create_sale(
+      jsonb_build_array(jsonb_build_object('product_id', (select id from products where sku = 'PCA-N2'), 'quantity', 1)),
+      :'sed25_id', :'branch_channel_id', :'k9_pm_id', :'customer_id', null, null, null, null, clock_timestamp(),
+      false, null, null, false, :'account_id'
+    ) ->> 'total')::numeric
+  ),
+  4242::numeric,
+  'K7: venta real con "9 cuotas test" cotiza correctamente el precio cargado — arquitectura 100% data-driven demostrada'
 );
 
 select * from finish();
