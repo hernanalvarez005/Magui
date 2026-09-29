@@ -1,7 +1,7 @@
-# pgTAP — baseline conocido: 62 "throws_ok compatibility artifacts"
+# pgTAP — baseline conocido: 70 "throws_ok compatibility artifacts"
 
 Al correr toda la suite (`pg_prove supabase/tests/database/*.sql`) van a
-aparecer **62 tests marcados como "failed" que NO son regresiones**. Es un
+aparecer **70 tests marcados como "failed" que NO son regresiones**. Es un
 artefacto de compatibilidad del runner local (pgTAP + Tap::Harness vía
 `pg_prove`), no un bug de la aplicación ni de las RPC. Antes de investigar
 cualquier "failed" nuevo, comparar contra esta lista — si coincide
@@ -54,6 +54,7 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `card6_installments.test.sql` | 11, 15, 16, 21, 22, 23 | 23 |
 | `exchange_legacy_stock_reversal.test.sql` | 17, 21 | 23 |
 | `mejoras.test.sql` | 1, 6, 8, 11 | 12 |
+| `price_conditions_admin.test.sql` | 7, 9, 19, 20, 28, 31, 32, 33 | 33 |
 | `pricing_and_sales.test.sql` | 9 | 11 |
 | `promotion_payment_methods.test.sql` | 1, 2, 3, 4, 11, 12, 15, 16, 17, 19, 20, 22, 23 | 25 |
 | `promotion_per_line_stacking.test.sql` | 14, 16 | 18 |
@@ -70,8 +71,8 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `web_order_history.test.sql` | 14 | 18 |
 | `web_order_paid_method_change.test.sql` | 3, 5, 6 | 7 |
 
-Total: **62 de 725** tests reales de la suite completa (al día de la
-migración 68, campos aditivos de PDF en doctor_sales_detail — ver `Origen`).
+Total: **70 de 758** tests reales de la suite completa (al día de la
+migración 69, Condiciones de precio administrables — ver `Origen`).
 El total de tests crece con cada archivo nuevo, la lista de "failed"
 conocidos no debería, salvo que se agregue un test nuevo que use la misma
 forma de 2 argumentos con una excepción real esperada;
@@ -163,4 +164,12 @@ que no agrega quirks) — 62/711 a partir de acá. Actualizado una vez más con
 los campos aditivos de doctor_sales_detail para Comisiones por Dra. →
 Exportar PDF (`20260201000068_doctor_sales_detail_pdf_fields.sql`,
 `doctor_sales_detail_pdf_fields.test.sql`, 14 casos, ninguno `throws_ok` —
-no agrega quirks) — 62/725 a partir de acá.
+no agrega quirks) — 62/725 a partir de acá. Actualizado una vez más con
+Condiciones de precio administrables (`20260201000069_price_conditions_admin.sql`,
++8 quirks nuevos de `price_conditions_admin.test.sql` — casos A7 (condición
+futura con requires_billing=true exige cuenta), B1 (sede inválida en
+`create_price_condition`), D2/D3 (disponibilidad rechazada server-side en
+Sede 37/Web), G1 (no-admin no puede crear una condición) y H2/H3/H4
+(regresión Transferencia/CARD_1/CARD_6 exigiendo cuenta) — los 8, `throws_ok`
+de 2 argumentos sobre rechazos esperados, mismo patrón que el resto de la
+suite — 70/758 a partir de acá.
