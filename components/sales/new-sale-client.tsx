@@ -21,9 +21,9 @@ import { formatCurrency } from "@/lib/utils";
 import { newSaleSchema } from "@/lib/validation/sale";
 import {
   computeRequiresPaymentAccountNow,
-  paymentMethodRequiresBilling,
   resolveFulfillmentLocationId,
   resolveFulfillmentType,
+  resolvePaymentMethodRequiresBilling,
   type FulfillmentChoice,
 } from "@/lib/sales/web-fulfillment";
 import { computeAllowedPaymentMethodIds, mapToLookup } from "@/lib/sales/promotion-payment-methods";
@@ -43,6 +43,10 @@ interface PaymentMethodOption {
   id: string;
   code: string;
   name: string;
+  // Checkpoint Final, Hallazgo B: dato real de payment_methods.requires_billing
+  // (migración 69) — nunca se infiere por code. Una condición nueva creada
+  // desde /admin/condiciones-precio queda reflejada acá sin tocar código.
+  requires_billing: boolean;
 }
 interface PaymentAccountOption {
   id: string;
@@ -74,6 +78,11 @@ interface PromotionOption {
   group_size: number;
   minimum_quantity: number | null;
 }
+interface PriceConditionAvailability {
+  paymentMethodId: string;
+  locationIds: string[];
+  web: boolean;
+}
 
 /**
  * Nueva Venta — pantalla principal (rediseño UX "carrito unificado").
@@ -103,6 +112,7 @@ export function NewSaleClient({
   products,
   promotions,
   promotionPaymentMethodIds,
+  priceConditionAvailability,
   isAdmin,
 }: {
   seller: { id: string; fullName: string };
@@ -116,6 +126,10 @@ export function NewSaleClient({
   /** promotion_id -> ids de medios de pago permitidos. Ausente/[] = legacy
    * sin configurar, no restringe nada (ver 20260201000063). */
   promotionPaymentMethodIds: Record<string, string[]>;
+  /** Un medio de pago sin entrada acá no tiene condición de precio propia
+   * (ej. Efectivo) — cae siempre al precio LIST/BASE, sin restricción de
+   * sede/canal. Ver Condiciones de precio administrables (migración 69/70). */
+  priceConditionAvailability: PriceConditionAvailability[];
   isAdmin: boolean;
 }) {
   const supabase = useMemo(() => createClient(), []);
@@ -257,10 +271,12 @@ export function NewSaleClient({
     };
   }, [locationId, supabase, isWeb]);
 
-  // Cuenta de ingreso: obligatoria solo para transferencia/1 pago/3 cuotas,
-  // nunca para efectivo ni venta sin costo. El backend (fn_create_sale_core)
-  // vuelve a decidir esto de forma independiente — esto es solo para
-  // mostrar/pedir el campo en el momento justo, nunca la fuente de verdad.
+  // Cuenta de ingreso: obligatoria solo para medios con requires_billing=true
+  // (dato real de payment_methods, migración 69 — Checkpoint Final, Hallazgo
+  // B: nunca más una lista de codes hardcodeada acá), nunca para venta sin
+  // costo. El backend (fn_create_sale_core) vuelve a decidir esto de forma
+  // independiente — esto es solo para mostrar/pedir el campo en el momento
+  // justo, nunca la fuente de verdad.
   //
   // requiresBilling: sigue exigiendo cliente con DNI (factura pendiente),
   // sin excepción. requiresPaymentAccountNow es más angosto — un pedido Web
@@ -269,7 +285,7 @@ export function NewSaleClient({
   // cobrar. No confundir "factura pendiente" con "cobro pendiente" (sección
   // 17 del pedido original) — son ejes distintos, nunca se mezclan.
   const selectedPaymentMethod = paymentMethods.find((pm) => pm.id === paymentMethodId);
-  const requiresBilling = !isFreeSale && paymentMethodRequiresBilling(selectedPaymentMethod?.code);
+  const requiresBilling = !isFreeSale && resolvePaymentMethodRequiresBilling(selectedPaymentMethod);
   const requiresPaymentAccountNow = computeRequiresPaymentAccountNow({ requiresBilling, isWeb, paymentStatus });
 
   // Alias para transferencia: a propósito NO es lo mismo que
@@ -287,8 +303,9 @@ export function NewSaleClient({
 
   function handlePaymentMethodChange(id: string) {
     setPaymentMethodId(id);
-    const code = paymentMethods.find((pm) => pm.id === id)?.code;
-    if (!paymentMethodRequiresBilling(code)) setPaymentAccountId("");
+    if (!resolvePaymentMethodRequiresBilling(paymentMethods.find((pm) => pm.id === id))) {
+      setPaymentAccountId("");
+    }
   }
 
   // Cambiar de canal resetea la forma de entrega (nunca queda una sede
@@ -399,6 +416,44 @@ export function NewSaleClient({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(allowedPaymentMethodIds), paymentMethodId]);
+
+  // Disponibilidad de condiciones de precio por sede/canal (Condiciones de
+  // precio administrables, migración 69/70): a diferencia de la restricción
+  // por promoción (arriba, transitoria según el carrito), esta es
+  // estructural — la configura un admin en /admin/condiciones-precio. Un
+  // medio sin condición propia configurada (ej. Efectivo) cae siempre al
+  // precio LIST/BASE, que no tiene restricción. El backend
+  // (fn_create_sale_core -> fn_price_condition_available) es la autoridad
+  // real; esto es solo para no dejar elegir acá algo que el servidor
+  // igual va a rechazar.
+  const availabilityByPaymentMethodId = useMemo(
+    () => new Map(priceConditionAvailability.map((a) => [a.paymentMethodId, a])),
+    [priceConditionAvailability]
+  );
+  const unavailablePaymentMethodIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const pm of paymentMethods) {
+      const availability = availabilityByPaymentMethodId.get(pm.id);
+      if (!availability) continue;
+      const available = isWeb ? availability.web : availability.locationIds.includes(locationId);
+      if (!available) ids.push(pm.id);
+    }
+    return ids;
+  }, [paymentMethods, availabilityByPaymentMethodId, isWeb, locationId]);
+
+  // Cambiar de sede o de canal puede dejar sin efecto el medio ya elegido
+  // (ej. "2 cuotas sin interés" habilitada en Sede 25 pero no en Sede 37) —
+  // se limpia y se avisa, nunca se confirma en silencio con una combinación
+  // que el backend va a rechazar igual.
+  useEffect(() => {
+    if (!paymentMethodId) return;
+    if (unavailablePaymentMethodIds.includes(paymentMethodId)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPaymentMethodId("");
+      toast.error("Esta forma de pago no está habilitada en esta sucursal/canal.");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(unavailablePaymentMethodIds), paymentMethodId]);
 
   function setQuantity(productId: string, quantity: number) {
     // Feedback breve (sección 8 del pedido "no abrir carrito automáticamente")
@@ -691,6 +746,7 @@ export function NewSaleClient({
         products={products}
         promotions={promotions}
         allowedPaymentMethodIds={allowedPaymentMethodIds}
+        unavailablePaymentMethodIds={unavailablePaymentMethodIds}
         quote={quote}
         quoting={quoting}
         onRemoveItem={(id) => setQuantity(id, 0)}

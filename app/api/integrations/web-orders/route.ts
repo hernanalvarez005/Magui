@@ -1,27 +1,20 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { z } from "zod";
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { resolveWebOrderFulfillmentType, webOrderSchema } from "@/lib/validation/web-order";
 
 // Endpoint preparado para futuras integraciones (Shopify, Tiendanube, WooCommerce, etc.)
 // sin asumir ninguna plataforma en particular (ver docs/architecture.md §31). Autenticación
 // server-to-server vía Bearer token compartido (WEB_ORDERS_API_TOKEN). Idempotente:
 // (external_source, external_order_id) tiene un unique index — un mismo pedido nunca crea
 // dos ventas, incluso si esta ruta se llama dos veces.
-
-const webOrderSchema = z.object({
-  external_source: z.string().trim().min(1, "external_source es obligatorio."),
-  external_order_id: z.string().trim().min(1, "external_order_id es obligatorio."),
-  location_id: z.string().uuid("location_id debe ser un UUID válido."),
-  payment_method_id: z.string().uuid("payment_method_id debe ser un UUID válido."),
-  items: z
-    .array(z.object({ product_id: z.string().uuid(), quantity: z.number().positive() }))
-    .min(1, "El pedido no tiene productos."),
-  customer_id: z.string().uuid().nullable().optional(),
-  doctor_id: z.string().uuid().nullable().optional(),
-  notes: z.string().max(500).nullable().optional(),
-  raw_reference: z.unknown().optional(), // se guarda solo en notes/logs, no en columna dedicada del MVP
-});
+//
+// payment_status/payment_account_id (Checkpoint 2.1, migración 071): circuito
+// de pago/facturación para integraciones que conocen el estado de pago del
+// pedido — ver lib/validation/web-order.ts. Un payload sin estos campos ve el
+// comportamiento histórico exacto (nunca se asume PENDING ni PAID).
+// fulfillment_type NUNCA se expone acá — es un detalle interno de Magui
+// (SHIPPING vs PICKUP, V1 solo soporta SHIPPING); se decide server-side.
 
 export async function POST(request: NextRequest) {
   const expectedToken = process.env.WEB_ORDERS_API_TOKEN;
@@ -62,6 +55,9 @@ export async function POST(request: NextRequest) {
     p_customer_id: parsed.data.customer_id ?? null,
     p_doctor_id: parsed.data.doctor_id ?? null,
     p_notes: parsed.data.notes ?? null,
+    p_payment_status: parsed.data.payment_status ?? null,
+    p_payment_account_id: parsed.data.payment_account_id ?? null,
+    p_fulfillment_type: resolveWebOrderFulfillmentType(parsed.data),
   });
 
   if (error) {

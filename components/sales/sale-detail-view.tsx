@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { CancelSaleDialog } from "@/components/sales/cancel-sale-dialog";
+import { resolveDisplayedConditionName } from "@/lib/sales/condition-name";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import type { FreeSaleReason, SaleItemRow, SaleRefundMethod, SaleRow, StockMovementRow } from "@/types/database";
 
@@ -66,6 +67,12 @@ export function SaleDetailView({
   replacesOriginal,
   returns = [],
 }: Props) {
+  // Nombre histórico (Checkpoint Final, Hallazgo A) — ver lib/sales/condition-name.ts.
+  const conditionName = resolveDisplayedConditionName({
+    snapshot: sale.price_condition_name_snapshot,
+    liveConditionName: condition?.name,
+  });
+
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5 p-4 md:p-6">
       <div className="flex items-center justify-between">
@@ -162,7 +169,7 @@ export function SaleDetailView({
             value={customer ? `${customer.full_name}${customer.dni ? ` · DNI ${customer.dni}` : ""}` : "Sin identificar"}
           />
           <Field label="Doctora" value={doctor?.full_name ?? "Sin doctora"} />
-          <Field label="Condición aplicada" value={condition?.name ?? "—"} />
+          <Field label="Condición aplicada" value={conditionName ?? "—"} />
           {/* Cuenta donde ingresó el dinero — distinto del medio de pago (ya
               se muestra arriba, junto al total). Una venta histórica sin
               cuenta asociada (ej. efectivo, o previa a este ajuste) muestra

@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   computeRequiresPaymentAccountNow,
-  paymentMethodRequiresBilling,
   resolveFulfillmentLocationId,
   resolveFulfillmentType,
+  resolvePaymentMethodRequiresBilling,
 } from "@/lib/sales/web-fulfillment";
 
 // BLOQUE C (circuito Ventas Web) — reglas puras de Nueva Venta Web.
@@ -62,18 +62,31 @@ describe("computeRequiresPaymentAccountNow", () => {
   });
 });
 
-describe("paymentMethodRequiresBilling", () => {
-  it("Transferencia/1 pago/3 cuotas/6 cuotas facturan", () => {
-    expect(paymentMethodRequiresBilling("TRANSFER")).toBe(true);
-    expect(paymentMethodRequiresBilling("CARD_1")).toBe(true);
-    expect(paymentMethodRequiresBilling("CARD_3")).toBe(true);
-    expect(paymentMethodRequiresBilling("CARD_6")).toBe(true);
+// Checkpoint Final, Hallazgo B: requiresBilling deja de inferirse por code
+// (lista hardcodeada eliminada) — pasa a leer payment_methods.requires_billing
+// directo, el mismo dato real que ya usa el backend desde la migración 69.
+describe("resolvePaymentMethodRequiresBilling", () => {
+  it("CASH no factura", () => {
+    expect(resolvePaymentMethodRequiresBilling({ requires_billing: false })).toBe(false);
   });
-  it("Efectivo no factura", () => {
-    expect(paymentMethodRequiresBilling("CASH")).toBe(false);
+  it("TRANSFER/CARD_1/CARD_3/CARD_6 facturan (vía su propio flag, no por code)", () => {
+    expect(resolvePaymentMethodRequiresBilling({ requires_billing: true })).toBe(true);
+  });
+  it('"2 cuotas sin interés" factura — mismo flag que cualquier otro medio, sin ningún caso especial por nombre/code', () => {
+    // El code real es autogenerado (PM-<hash>) — la función ni siquiera lo recibe,
+    // prueba en sí misma de que no hay ninguna rama por code posible acá.
+    expect(resolvePaymentMethodRequiresBilling({ requires_billing: true })).toBe(true);
+  });
+  it("una condición futura creada desde /admin/condiciones-precio con requires_billing=true factura, sin tocar este archivo", () => {
+    const futureCondition = { requires_billing: true };
+    expect(resolvePaymentMethodRequiresBilling(futureCondition)).toBe(true);
+  });
+  it("una condición futura con requires_billing=false no factura", () => {
+    const futureCondition = { requires_billing: false };
+    expect(resolvePaymentMethodRequiresBilling(futureCondition)).toBe(false);
   });
   it("sin medio de pago elegido todavía, no factura (nunca undefined = true)", () => {
-    expect(paymentMethodRequiresBilling(undefined)).toBe(false);
-    expect(paymentMethodRequiresBilling(null)).toBe(false);
+    expect(resolvePaymentMethodRequiresBilling(undefined)).toBe(false);
+    expect(resolvePaymentMethodRequiresBilling(null)).toBe(false);
   });
 });

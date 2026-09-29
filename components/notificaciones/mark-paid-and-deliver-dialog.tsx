@@ -18,12 +18,15 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
-import { paymentMethodRequiresBilling } from "@/lib/sales/web-fulfillment";
+import { resolvePaymentMethodRequiresBilling } from "@/lib/sales/web-fulfillment";
 
 interface PaymentMethodOption {
   id: string;
   code: string;
   name: string;
+  // Checkpoint Final, Hallazgo B: dato real de payment_methods.requires_billing,
+  // nunca inferido por code.
+  requires_billing: boolean;
 }
 
 interface PaymentAccountOption {
@@ -65,11 +68,11 @@ export function MarkPaidAndDeliverDialog({
   const [paymentAccountId, setPaymentAccountId] = useState(currentPaymentAccountId ?? "");
 
   const selectedMethod = paymentMethods.find((pm) => pm.id === paymentMethodId);
-  const requiresAccount = paymentMethodRequiresBilling(selectedMethod?.code);
+  const requiresAccount = resolvePaymentMethodRequiresBilling(selectedMethod);
 
   function handlePaymentMethodChange(id: string) {
     setPaymentMethodId(id);
-    if (!paymentMethodRequiresBilling(paymentMethods.find((pm) => pm.id === id)?.code)) {
+    if (!resolvePaymentMethodRequiresBilling(paymentMethods.find((pm) => pm.id === id))) {
       setPaymentAccountId("");
     }
   }

@@ -77,9 +77,37 @@ export type PaymentMethodRow = {
   code: string;
   name: string;
   active: boolean;
+  // Reemplaza el IN hardcodeado de códigos que vivía en fn_create_sale_core/
+  // create_sale_exchange (migración 69) — si TRUE, una venta con este medio
+  // exige cliente con DNI + cuenta de ingreso + billing_status.
+  requires_billing: boolean;
   sort_order: number;
   created_at: string;
   updated_at: string;
+};
+
+// Disponibilidad de una condición de precio — dos junction tables genéricas
+// (migración 69): por sede (stock_locations) y por canal (sales_channels).
+// Nunca columnas boolean con nombre de sede/canal hardcodeado.
+export type PriceConditionLocationRow = {
+  price_condition_id: string;
+  location_id: string;
+  created_at: string;
+};
+
+export type PriceConditionSalesChannelRow = {
+  price_condition_id: string;
+  sales_channel_id: string;
+  created_at: string;
+};
+
+export type CreatePriceConditionResult = {
+  price_condition_id: string;
+  payment_method_id: string;
+  price_condition_code: string;
+  payment_method_code: string;
+  copied_prices_count: number;
+  skipped_products: { id: string; sku: string; name: string }[];
 };
 
 export type PaymentAccountRow = {
@@ -179,6 +207,12 @@ export type SaleRow = {
   doctor_id: string | null;
   payment_method_id: string;
   applied_price_condition_id: string | null;
+  // Nombre de price_conditions al momento de esta venta — nunca se reescribe
+  // si más adelante se edita el nombre de la condición. NULL para ventas
+  // anteriores a la migración 69, o si la venta fue 100% precio manual
+  // (sin condición resuelta) — ahí la UI cae a resolver por JOIN contra
+  // price_conditions vigente.
+  price_condition_name_snapshot: string | null;
   subtotal: string;
   discount_total: string;
   // Recargo comercial: una condición de pago más cara que Lista (ej. cuotas)
@@ -906,6 +940,23 @@ export type Database = {
         Update: Partial<PriceConditionRow>;
         Relationships: [];
       };
+      // Disponibilidad de condiciones de precio (migración 69, Condiciones de
+      // precio administrables) — se escriben exclusivamente vía
+      // create_price_condition/update_price_condition (reemplazo completo),
+      // igual criterio que promotion_products/promotion_payment_methods:
+      // insert/delete directo disponible por RLS, la UI de admin nunca lo usa.
+      price_condition_locations: {
+        Row: PriceConditionLocationRow;
+        Insert: { price_condition_id: string; location_id: string } & Partial<PriceConditionLocationRow>;
+        Update: Partial<PriceConditionLocationRow>;
+        Relationships: [];
+      };
+      price_condition_sales_channels: {
+        Row: PriceConditionSalesChannelRow;
+        Insert: { price_condition_id: string; sales_channel_id: string } & Partial<PriceConditionSalesChannelRow>;
+        Update: Partial<PriceConditionSalesChannelRow>;
+        Relationships: [];
+      };
       product_prices: {
         Row: ProductPriceRow;
         Insert: { product_id: string; price_condition_id: string; amount: string } &
@@ -1131,6 +1182,34 @@ export type Database = {
         };
         Returns: ProductPriceRow;
       };
+      // Condiciones de precio administrables (migración 69/70) — alta y
+      // edición atómicas, ver comentarios de cabecera de ambas migraciones.
+      create_price_condition: {
+        Args: {
+          p_name: string;
+          p_discount_percent: number;
+          p_requires_billing: boolean;
+          p_location_codes: string[];
+          p_available_web: boolean;
+          p_active?: boolean;
+          p_copy_prices_from_code?: string;
+          p_priority?: number | null;
+        };
+        Returns: CreatePriceConditionResult;
+      };
+      update_price_condition: {
+        Args: {
+          p_price_condition_id: string;
+          p_name: string;
+          p_discount_percent: number;
+          p_requires_billing: boolean;
+          p_priority: number;
+          p_active: boolean;
+          p_location_codes: string[];
+          p_available_web: boolean;
+        };
+        Returns: { price_condition_id: string; payment_method_id: string };
+      };
       clear_product_price: {
         Args: {
           p_product_id: string;
@@ -1247,6 +1326,14 @@ export type Database = {
           p_doctor_id?: string | null;
           p_notes?: string | null;
           p_sold_at?: string;
+          // Checkpoint 2.1 (migración 71) — circuito de pago/facturación.
+          // Opcionales, default null: un caller que no los manda ve el
+          // comportamiento histórico exacto. p_fulfillment_type nunca se
+          // expone en el contrato público de la ruta (ver
+          // lib/validation/web-order.ts) — solo el route handler lo decide.
+          p_payment_status?: SalePaymentStatus | null;
+          p_payment_account_id?: string | null;
+          p_fulfillment_type?: SaleFulfillmentType | null;
         };
         Returns: CreateSaleResult;
       };

@@ -15,7 +15,7 @@ export default async function NotificacionesPage() {
   // el mismo filtro admin/sede resuelto una sola vez, del lado del server.
   const [{ data: pickups }, { data: paymentMethods }, { data: paymentAccounts }] = await Promise.all([
     supabase.rpc("web_pending_pickups"),
-    supabase.from("payment_methods").select("id, code, name").eq("active", true).order("sort_order"),
+    supabase.from("payment_methods").select("id, code, name, requires_billing").eq("active", true).order("sort_order"),
     supabase.from("payment_accounts").select("id, code, name, alias").eq("active", true).order("sort_order"),
   ]);
 
