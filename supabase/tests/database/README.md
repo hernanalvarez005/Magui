@@ -72,7 +72,7 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `web_order_history.test.sql` | 14 | 18 |
 | `web_order_paid_method_change.test.sql` | 3, 5, 6 | 7 |
 
-Total: **85 de 885** tests reales de la suite completa (al día de la
+Total: **85 de 881** tests reales de la suite completa (al día de la
 migración 74, Precio de Lista maestro y recálculo automático AUTO/MANUAL — ver `Origen`).
 El total de tests crece con cada archivo nuevo, la lista de "failed"
 conocidos no debería, salvo que se agregue un test nuevo que use la misma
@@ -236,4 +236,4 @@ forzarlo más a 0). Archivo nuevo `auto_price_recalculation.test.sql`, 50
 casos — 3 `throws_ok` de 2 argumentos sobre rechazos esperados (override
 inválido aborta todo el guardado, no-admin, el helper interno no ejecutable
 directamente), mismo patrón que el resto de la suite, +3 quirks nuevos —
-85/885 a partir de acá.
+85/881 a partir de acá.
