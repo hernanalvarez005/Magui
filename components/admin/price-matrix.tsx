@@ -157,13 +157,14 @@ export function PriceMatrix({
     });
     const pct = Number(value);
     if (!listConditionId || value.trim() === "" || !Number.isFinite(pct)) return;
-    // Recalcula esta condición para TODOS los productos (salvo los MANUAL),
-    // usando la Lista actual (editada o persistida) de cada uno.
+    // Recalcula esta condición para TODOS los productos, incluidos los
+    // MANUAL: guardar este % resetea toda la columna a AUTO (migración 075),
+    // así que el preview tiene que anticiparlo — a diferencia de Lista
+    // (suggestForProduct), que sí preserva las excepciones MANUAL.
     setEdited((prev) => {
       const next = new Map(prev);
       for (const product of products) {
         const key = cellKey(product.id, conditionId);
-        if (isCellManual(key)) continue;
         const listRaw = prev.get(cellKey(product.id, listConditionId));
         const listAmount = listRaw !== undefined ? Number(listRaw) : original.get(cellKey(product.id, listConditionId));
         if (listAmount === undefined || !Number.isFinite(listAmount)) continue;
