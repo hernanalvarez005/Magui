@@ -194,6 +194,14 @@ comment on function public.create_price_condition(text, numeric, boolean, text[]
   '(copiados de la condición de origen, LIST por defecto). p_visible_in_price_lookup (migración 73, '
   'default true): si aparece en /precios — independiente de p_active. Solo admin (is_admin()).';
 
+-- Postgres otorga EXECUTE a PUBLIC automáticamente al crear una función
+-- (a diferencia de las tablas) salvo que se revoque explícitamente — mismo
+-- diagnóstico que la migración 072 ya hizo para otras 5 funciones. 069/070
+-- nunca revocaron PUBLIC en create_price_condition, así que heredaba el
+-- default; se corrige acá con el mismo patrón de 072 (revoke de los tres
+-- roles, luego grant solo a authenticated) para que esta condición quede
+-- en el mismo nivel mínimo que el resto de la suite.
+revoke execute on function public.create_price_condition(text, numeric, boolean, text[], boolean, boolean, text, int, boolean) from public, authenticated, anon;
 grant execute on function public.create_price_condition(text, numeric, boolean, text[], boolean, boolean, text, int, boolean) to authenticated;
 
 -- ---------------------------------------------------------------------------
@@ -314,4 +322,9 @@ comment on function public.update_price_condition(uuid, text, numeric, boolean, 
   'Nunca toca code, rule_type, payment_method_id ni ningún precio en product_prices. No editable '
   'para la condición BASE/LIST. Solo admin (is_admin()).';
 
+-- Mismo motivo que en create_price_condition más arriba: 069/070 nunca
+-- revocaron PUBLIC de esta función tampoco, así que heredaba el default de
+-- Postgres. Mismo patrón de 072 (revoke de los tres roles, luego grant solo
+-- a authenticated).
+revoke execute on function public.update_price_condition(uuid, text, numeric, boolean, int, boolean, text[], boolean, boolean) from public, authenticated, anon;
 grant execute on function public.update_price_condition(uuid, text, numeric, boolean, int, boolean, text[], boolean, boolean) to authenticated;
