@@ -8,7 +8,7 @@
 -- seller en ninguna — este archivo prueba que eso sigue siendo así.
 -- Correr con: supabase test db  (requiere Supabase CLI + Docker)
 begin;
-select plan(19);
+select plan(15);
 
 insert into auth.users (id, email) values
   ('f5000000-0000-0000-0000-000000000001', 'admin.precios@test.maguirejuve.com'),
@@ -280,70 +280,20 @@ select ok(
   'Condiciones 15: la condición BASE (Lista) sigue pasando el filtro de /precios'
 );
 
--- ---------------------------------------------------------------------------
--- Condiciones 16-19 (migración 73): visible_in_price_lookup — eje
--- independiente de active, aplicado sobre el MISMO filtro completo que usa
--- app/(app)/precios/page.tsx (active + rule_type + el .or() de
--- visibilidad). Reusa TEST-PC-FUTURA (PAYMENT_METHOD, code nunca
--- hardcodeado en ningún allowlist) para demostrar que la visibilidad
--- también es data-driven, no solo el rule_type.
--- ---------------------------------------------------------------------------
-select ok(
-  exists(
-    select 1 from price_conditions
-    where code = 'TEST-PC-FUTURA' and active = true and rule_type in ('BASE', 'PAYMENT_METHOD')
-      and (rule_type = 'BASE' or visible_in_price_lookup = true)
-  ),
-  'Condiciones 16: TEST-PC-FUTURA (visible_in_price_lookup default true) pasa el filtro completo de /precios'
-);
-
--- Las escrituras sobre price_conditions están gated por is_admin() (RLS
--- price_conditions_admin_update) — igual que en producción, estos updates
--- directos tienen que correr impersonando admin, no la vendedora activa en
--- esta sección, o RLS los descarta en silencio (0 filas, sin excepción) y
--- la prueba terminaría leyendo el valor viejo.
-set role authenticated;
-select set_config('request.jwt.claim.sub', 'f5000000-0000-0000-0000-000000000001', false);
-update price_conditions set visible_in_price_lookup = false where code = 'TEST-PC-FUTURA';
-set role authenticated;
-select set_config('request.jwt.claim.sub', 'f5000000-0000-0000-0000-000000000002', false);
-select ok(
-  not exists(
-    select 1 from price_conditions
-    where code = 'TEST-PC-FUTURA' and active = true and rule_type in ('BASE', 'PAYMENT_METHOD')
-      and (rule_type = 'BASE' or visible_in_price_lookup = true)
-  ),
-  'Condiciones 17: la misma condición dinámica, oculta (visible_in_price_lookup=false), deja de pasar el filtro — sin tocar active ni rule_type'
-);
-
-set role authenticated;
-select set_config('request.jwt.claim.sub', 'f5000000-0000-0000-0000-000000000001', false);
-update price_conditions set visible_in_price_lookup = false where rule_type = 'BASE';
-set role authenticated;
-select set_config('request.jwt.claim.sub', 'f5000000-0000-0000-0000-000000000002', false);
-select ok(
-  exists(
-    select 1 from price_conditions
-    where rule_type = 'BASE' and active = true and rule_type in ('BASE', 'PAYMENT_METHOD')
-      and (rule_type = 'BASE' or visible_in_price_lookup = true)
-  ),
-  'Condiciones 18: BASE sigue pasando el filtro aunque se le fuerce visible_in_price_lookup=false por SQL directo — el filtro la ignora estructuralmente para BASE, no depende de que la UI nunca ofrezca el control'
-);
-set role authenticated;
-select set_config('request.jwt.claim.sub', 'f5000000-0000-0000-0000-000000000001', false);
-update price_conditions set visible_in_price_lookup = true where rule_type = 'BASE';
-
-update price_conditions set visible_in_price_lookup = true where code = 'TEST-PC-FUTURA';
-set role authenticated;
-select set_config('request.jwt.claim.sub', 'f5000000-0000-0000-0000-000000000002', false);
-select ok(
-  exists(
-    select 1 from price_conditions
-    where code = 'TEST-PC-FUTURA' and active = true and rule_type in ('BASE', 'PAYMENT_METHOD')
-      and (rule_type = 'BASE' or visible_in_price_lookup = true)
-  ),
-  'Condiciones 19: volver a marcarla visible la vuelve a mostrar — es un toggle en vivo, no una decisión de una sola vía'
-);
+-- Condiciones 16-19 (visible_in_price_lookup sobre el viejo filtro global
+-- de /precios) se eliminaron: ese filtro ya no existe en la aplicación.
+-- app/(app)/precios/page.tsx ahora trae siempre el set completo
+-- (active=true, rule_type IN ('BASE','PAYMENT_METHOD') — sin el .or() de
+-- visibilidad, que son justo las líneas 259-281 de arriba, Condiciones
+-- 13-15, y esas SÍ siguen vigentes) y aplica la visibilidad por rol en
+-- TypeScript vía isPriceConditionVisibleForRole (admin: bypass total;
+-- seller/viewer: BASE siempre + PAYMENT_METHOD solo si
+-- visible_in_price_lookup=true) — cubierto en
+-- tests/price-lookup-visibility.test.ts (Vitest), no en pgTAP: no tiene
+-- sentido simular en SQL una regla que vive en TypeScript. Los 4 casos de
+-- acá no probaban ningún invariante de base de datos independiente (ni
+-- RLS, ni una RPC, ni un CHECK) — solo reproducían la expresión SQL vieja,
+-- así que no quedó nada que conservar reformulado.
 
 select * from finish();
 rollback;
