@@ -50,7 +50,7 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | Archivo | Tests fallidos | Total del archivo |
 |---|---|---|
 | `analytics.test.sql` | 9 | 24 |
-| `auto_price_recalculation.test.sql` | 21, 23, 81 | 81 |
+| `auto_price_recalculation.test.sql` | 23, 25, 115 | 115 |
 | `billing_status.test.sql` | 12 | 15 |
 | `card6_installments.test.sql` | 11, 15, 16, 21, 22, 23 | 23 |
 | `exchange_legacy_stock_reversal.test.sql` | 17, 21 | 23 |
@@ -72,8 +72,8 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `web_order_history.test.sql` | 14 | 18 |
 | `web_order_paid_method_change.test.sql` | 3, 5, 6 | 7 |
 
-Total: **85 de 912** tests reales de la suite completa (al día de la
-migración 75, fix del % global pisando MANUAL — ver `Origen`).
+Total: **85 de 946** tests reales de la suite completa (al día de la
+migración 76, fix de Lista pisando MANUAL — ver `Origen`).
 El total de tests crece con cada archivo nuevo, la lista de "failed"
 conocidos no debería, salvo que se agregue un test nuevo que use la misma
 forma de 2 argumentos con una excepción real esperada;
@@ -255,4 +255,25 @@ cerrada, nunca pisada; fila AUTO nueva con id distinto; venta histórica
 intacta) — ninguno usa `throws_ok`, no agrega quirks. El 3er quirk del
 archivo (antes test 50, el helper interno no ejecutable directamente) se
 renumera a 81 por el crecimiento del archivo, mismo caso. 85/912 a partir de
-acá.
+acá. Actualizado una vez más con el fix de producción del Precio de Lista
+pisando MANUAL (`20260201000076_list_price_overrides_manual.sql` —
+`CREATE OR REPLACE` de `fn_recalculate_auto_prices` con el mismo signature;
+se elimina por completo la protección de MANUAL, que ya no aplica bajo
+ninguna dirección (Lista o %) — la función queda más simple que la 075, no
+más compleja, al sacar `v_existing_mode`/`from_percent_change` sin uso;
+`discount_percent` NULL sigue sin participar, 0% sigue participando; no
+agrega ningún GRANT). `auto_price_recalculation.test.sql` pasa de 81 a 115
+casos: 4 asserts existentes (B5, antes sección C vía C1b, P9, R6/R7) se
+actualizan porque probaban el comportamiento viejo (Lista preservando
+MANUAL, ahora corregido); 4 setups nuevos (B5b, C1b, P9b, R8b) para seguir
+ejerciendo "% global pisa MANUAL" sobre una excepción real en vez de sobre
+una fila que el fix de Lista ya dejó AUTO — sin quirks nuevos, no usan
+`throws_ok`. Sección S nueva, +30 casos (S1-S30) — matriz completa de los
+11 casos del pedido (producto sin fila previa, distintos % por condición,
+NULL nunca participa, 0% sí, edición individual y su invalidación por Lista
+o por %, condición futura data-driven, producto sin Lista) más integridad
+histórica (fila MANUAL vieja cerrada, nunca pisada; fila AUTO nueva con id
+distinto; venta histórica intacta) — ninguno usa `throws_ok`, no agrega
+quirks. El 3er quirk del archivo (antes test 81, el helper interno no
+ejecutable directamente) se renumera a 115 por el crecimiento del archivo,
+mismo caso. 85/946 a partir de acá.
