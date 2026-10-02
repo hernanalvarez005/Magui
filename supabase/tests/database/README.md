@@ -50,7 +50,7 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | Archivo | Tests fallidos | Total del archivo |
 |---|---|---|
 | `analytics.test.sql` | 9 | 24 |
-| `auto_price_recalculation.test.sql` | 19, 21, 50 | 50 |
+| `auto_price_recalculation.test.sql` | 21, 23, 81 | 81 |
 | `billing_status.test.sql` | 12 | 15 |
 | `card6_installments.test.sql` | 11, 15, 16, 21, 22, 23 | 23 |
 | `exchange_legacy_stock_reversal.test.sql` | 17, 21 | 23 |
@@ -72,8 +72,8 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `web_order_history.test.sql` | 14 | 18 |
 | `web_order_paid_method_change.test.sql` | 3, 5, 6 | 7 |
 
-Total: **85 de 881** tests reales de la suite completa (al día de la
-migración 74, Precio de Lista maestro y recálculo automático AUTO/MANUAL — ver `Origen`).
+Total: **85 de 912** tests reales de la suite completa (al día de la
+migración 75, fix del % global pisando MANUAL — ver `Origen`).
 El total de tests crece con cada archivo nuevo, la lista de "failed"
 conocidos no debería, salvo que se agregue un test nuevo que use la misma
 forma de 2 argumentos con una excepción real esperada;
@@ -236,4 +236,23 @@ forzarlo más a 0). Archivo nuevo `auto_price_recalculation.test.sql`, 50
 casos — 3 `throws_ok` de 2 argumentos sobre rechazos esperados (override
 inválido aborta todo el guardado, no-admin, el helper interno no ejecutable
 directamente), mismo patrón que el resto de la suite, +3 quirks nuevos —
-85/881 a partir de acá.
+85/881 a partir de acá. Actualizado una vez más con el fix de producción del
+% global pisando MANUAL (`20260201000075_percent_change_overrides_manual.sql`
+— `CREATE OR REPLACE` de `fn_recalculate_auto_prices` con el mismo
+signature; la protección de MANUAL ahora aplica solo cuando el par
+producto×condición NO vino de un cambio global de % (`from_percent_change`);
+un cambio de Lista sigue sin pisar MANUAL nunca; no agrega ningún GRANT, el
+helper sigue sin ser invocable directamente — mismo ACL que la 074).
+`auto_price_recalculation.test.sql` pasa de 50 a 81 casos: 3 asserts
+existentes (C3, K5, L3) se actualizan porque probaban el comportamiento
+viejo (% global preservando MANUAL, ahora corregido) y 2 setups nuevos
+(C3b, D0) para seguir ejerciendo "Volver a automático" sobre una excepción
+real — sin quirks nuevos, no usan `throws_ok`. Sección R nueva, +28 casos
+(R0-R27) — matriz completa de los 11 casos del pedido (los que ya estaban
+cubiertos por secciones previas, como % NULL o condición inactiva, se
+referencian sin duplicar) más integridad histórica (fila MANUAL vieja
+cerrada, nunca pisada; fila AUTO nueva con id distinto; venta histórica
+intacta) — ninguno usa `throws_ok`, no agrega quirks. El 3er quirk del
+archivo (antes test 50, el helper interno no ejecutable directamente) se
+renumera a 81 por el crecimiento del archivo, mismo caso. 85/912 a partir de
+acá.

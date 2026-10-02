@@ -33,10 +33,11 @@ export default async function AdminPricesPage() {
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">
         Editar un precio nunca pisa el histórico: se cierra la vigencia anterior y se crea una versión
-        nueva. Las ventas ya confirmadas mantienen el precio con el que se vendieron. Precio de Lista
-        es el precio maestro: cambiar la Lista o el % de una condición recalcula automáticamente sus
-        precios (AUTO) — salvo los que se hayan editado a mano (Manual), que quedan congelados hasta
-        &quot;Volver a automático&quot;. Todo se guarda en un solo paso, atómico.
+        nueva. Precio de Lista es el precio maestro: cambiarlo recalcula los precios automáticos
+        (AUTO) respetando las excepciones Manual. Cambiar el % de una condición recalcula toda esa
+        columna y la vuelve a dejar en AUTO, incluso si tenía excepciones Manual. Editar una celda
+        puntual la convierte en una excepción Manual — tocá el badge para volverla a automático. Todo
+        se guarda en un solo paso, atómico.
       </p>
       <PriceMatrix
         products={products ?? []}

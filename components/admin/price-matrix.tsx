@@ -93,10 +93,48 @@ export function PriceMatrix({
   const listConditionId = conditions.find((c) => c.code === "LIST")?.id;
   const suggestableConditions = conditions.filter(isDiscountConfigurable);
 
-  /** true si esta celda es (o va a pasar a ser) MANUAL — el ripple de Lista/% nunca la toca, ni en el preview local. */
-  function isCellManual(key: string): boolean {
+  /**
+   * Única fuente de verdad para "¿tiene este producto un Precio de Lista
+   * usable, y cuál es?" — Lista editada (preview) si existe, si no la
+   * persistida. "" (campo Lista vaciado a mano) nunca cuenta como 0: debe
+   * dar `undefined`, igual que "nunca tuvo Lista". Reusado por
+   * handlePercentChange (elegibilidad de la cascada) y por hasListAmount
+   * (acá abajo) — un solo criterio, nunca dos interpretaciones distintas.
+   */
+  function listAmountFor(productId: string): number | undefined {
+    if (!listConditionId) return undefined;
+    const key = cellKey(productId, listConditionId);
+    const raw = edited.has(key) ? edited.get(key)! : original.has(key) ? String(original.get(key)) : undefined;
+    if (raw === undefined || raw.trim() === "") return undefined;
+    const amount = Number(raw);
+    return Number.isFinite(amount) ? amount : undefined;
+  }
+
+  function hasListAmount(productId: string): boolean {
+    return listAmountFor(productId) !== undefined;
+  }
+
+  /**
+   * true si hay un % nuevo pendiente para esta condición que sea un número
+   * válido y NO vacío — a propósito distinto de isPercentDirty (que da true
+   * también al BORRAR el %, y sigue usándose para el resaltado del input y
+   * el payload de guardado). Semántica 074/075: % -> valor no nulo (0
+   * incluido) resetea toda la columna a AUTO; % -> vacío/NULL cierra los
+   * AUTO pero preserva MANUAL — son dos casos distintos, nunca el mismo
+   * flag.
+   */
+  function isPercentSetToValue(conditionId: string): boolean {
+    if (!percentEdited.has(conditionId)) return false;
+    const raw = percentEdited.get(conditionId)!;
+    return raw.trim() !== "" && Number.isFinite(Number(raw));
+  }
+
+  /** true si esta celda es (o va a pasar a ser) MANUAL. El ripple de Lista nunca la toca (preserva la excepción); un % global válido (no vacío) sí la pisa, porque al guardar la 075 la resetea a AUTO — por eso handlePercentChange limpia manuallyTouched/resetToAuto de las celdas elegibles antes de que se llegue a leer este estado. */
+  function isCellManual(productId: string, conditionId: string): boolean {
+    const key = cellKey(productId, conditionId);
     if (resetToAuto.has(key)) return false;
     if (manuallyTouched.has(key)) return true;
+    if (isPercentSetToValue(conditionId) && hasListAmount(productId)) return false;
     return originalMode.get(key) === "MANUAL";
   }
 
@@ -125,8 +163,8 @@ export function PriceMatrix({
    * Sugiere (preview local, nunca persiste por sí solo) el precio de cada
    * condición configurable para un producto puntual, a partir de su Lista
    * actual y el % actual de cada condición — nunca pisa una celda MANUAL,
-   * ni en este preview: el admin la ve congelada hasta "Volver a
-   * automático".
+   * ni en este preview: el admin la ve congelada hasta tocar el badge
+   * "Manual" o cambiar el % global de esa condición.
    */
   function suggestForProduct(productId: string, listAmount: number) {
     if (!Number.isFinite(listAmount) || listAmount < 0) return;
@@ -134,7 +172,7 @@ export function PriceMatrix({
       const next = new Map(prev);
       for (const cond of suggestableConditions) {
         const key = cellKey(productId, cond.id);
-        if (isCellManual(key)) continue;
+        if (isCellManual(productId, cond.id)) continue;
         const pct = Number(percentValueFor(cond.id) || 0);
         if (!Number.isFinite(pct)) continue;
         next.set(key, String(suggestDiscountedPrice(listAmount, pct)));
@@ -156,20 +194,50 @@ export function PriceMatrix({
       return next;
     });
     const pct = Number(value);
+    // Vacío/NULL: cierra los AUTO pero preserva MANUAL (semántica sin
+    // cambios de 074/075, ver save_price_matrix_changes) — no hay nada que
+    // recalcular ni ninguna excepción manual que invalidar acá, se corta
+    // antes de tocar edited/manuallyTouched/resetToAuto.
     if (!listConditionId || value.trim() === "" || !Number.isFinite(pct)) return;
-    // Recalcula esta condición para TODOS los productos (salvo los MANUAL),
-    // usando la Lista actual (editada o persistida) de cada uno.
+
+    // Productos elegibles para ESTE cambio de %: los que tienen Lista
+    // (mismo criterio que fn_recalculate_auto_prices — "producto sin Lista
+    // no participa"). Un solo cálculo, reusado para el preview de precio Y
+    // para decidir qué celdas dejan de mostrarse como Manual.
+    const eligibleProductIds = products.filter((p) => hasListAmount(p.id)).map((p) => p.id);
+
+    // Recalcula esta condición para todos los elegibles, incluidos los
+    // MANUAL: guardar un % no nulo (0 incluido) resetea toda la columna a
+    // AUTO (migración 075), así que el preview tiene que anticiparlo — a
+    // diferencia de Lista (suggestForProduct), que sí preserva las
+    // excepciones MANUAL.
     setEdited((prev) => {
       const next = new Map(prev);
-      for (const product of products) {
-        const key = cellKey(product.id, conditionId);
-        if (isCellManual(key)) continue;
-        const listRaw = prev.get(cellKey(product.id, listConditionId));
-        const listAmount = listRaw !== undefined ? Number(listRaw) : original.get(cellKey(product.id, listConditionId));
-        if (listAmount === undefined || !Number.isFinite(listAmount)) continue;
-        next.set(key, String(suggestDiscountedPrice(listAmount, pct)));
+      for (const productId of eligibleProductIds) {
+        next.set(cellKey(productId, conditionId), String(suggestDiscountedPrice(listAmountFor(productId)!, pct)));
       }
       return next;
+    });
+
+    // Este % global ya invalidó cualquier excepción manual/reset individual
+    // previo de los elegibles — la acción más reciente (este cambio de %)
+    // gana. Si el admin edita una celda puntual después, handleManualPriceChange
+    // la vuelve a marcar Manual — última acción gana, sin prioridades fijas.
+    setManuallyTouched((prev) => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const productId of eligibleProductIds) {
+        if (next.delete(cellKey(productId, conditionId))) changed = true;
+      }
+      return changed ? next : prev;
+    });
+    setResetToAuto((prev) => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const productId of eligibleProductIds) {
+        if (next.delete(cellKey(productId, conditionId))) changed = true;
+      }
+      return changed ? next : prev;
     });
   }
 
@@ -326,11 +394,11 @@ export function PriceMatrix({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="sticky left-0 bg-card">Producto</TableHead>
+              <TableHead className="sticky left-0 w-56 max-w-56 bg-card">Producto</TableHead>
               {conditions.map((c) => (
-                <TableHead key={c.id} className="text-right align-top">
+                <TableHead key={c.id} className="w-24 max-w-24 px-1.5 text-right align-top">
                   <div className="flex flex-col items-end gap-1">
-                    <span>{c.name}</span>
+                    <span className="whitespace-normal break-words leading-tight">{c.name}</span>
                     {/* % informativo dentro del propio encabezado de la
                         condición — toda condición PAYMENT_METHOD puede
                         configurarlo (isDiscountConfigurable), nunca un
@@ -359,7 +427,7 @@ export function PriceMatrix({
           <TableBody>
             {products.map((product) => (
               <TableRow key={product.id}>
-                <TableCell className="sticky left-0 bg-card font-medium">
+                <TableCell className="sticky left-0 w-56 max-w-56 whitespace-normal break-words bg-card font-medium">
                   {product.name}
                   {!product.active ? (
                     <Badge variant="outline" className="ml-2">
@@ -370,18 +438,20 @@ export function PriceMatrix({
                 </TableCell>
                 {conditions.map((c) => {
                   const isList = c.id === listConditionId;
-                  const key = cellKey(product.id, c.id);
-                  const manual = !isList && isCellManual(key);
-                  const preview = manual ? autoPreviewFor(product.id, c.id) : null;
+                  // Puramente visual: el badge "Manual" es feedback de una
+                  // edición directa EN ESTA SESIÓN, nunca una lectura del
+                  // pricing_mode persistido — ver isCellManual (más abajo)
+                  // para la lógica funcional (preview/ripple), que no cambia.
+                  const showManualBadge = manuallyTouched.has(cellKey(product.id, c.id));
                   return (
-                    <TableCell key={c.id} className="text-right">
-                      <div className="ml-auto flex w-28 flex-col items-end gap-0.5">
+                    <TableCell key={c.id} className="px-1.5 text-right">
+                      <div className="ml-auto flex w-24 flex-col items-end gap-0.5">
                         <Input
                           type="number"
                           className={cn(
-                            "h-8 w-28 text-right",
+                            "h-8 w-24 px-1.5 text-right",
                             isDirty(product.id, c.id) && "border-primary ring-1 ring-primary",
-                            manual && "border-amber-500"
+                            showManualBadge && "border-amber-500"
                           )}
                           placeholder="—"
                           value={valueFor(product.id, c.id)}
@@ -391,22 +461,15 @@ export function PriceMatrix({
                               : handleManualPriceChange(product.id, c.id, e.target.value)
                           }
                         />
-                        {manual ? (
-                          <div className="flex flex-col items-end gap-0.5 text-right">
-                            <Badge variant="secondary" className="text-[10px]">
-                              Manual
-                            </Badge>
-                            {preview ? (
-                              <span className="text-[10px] text-muted-foreground">Automático: {preview}</span>
-                            ) : null}
-                            <button
-                              type="button"
-                              className="text-[10px] text-primary underline-offset-2 hover:underline"
-                              onClick={() => handleResetToAuto(product.id, c.id)}
-                            >
-                              Volver a automático
-                            </button>
-                          </div>
+                        {showManualBadge ? (
+                          <Badge
+                            variant="secondary"
+                            className="text-[10px] cursor-pointer select-none hover:bg-secondary/70"
+                            title="Volver a automático"
+                            onClick={() => handleResetToAuto(product.id, c.id)}
+                          >
+                            Manual
+                          </Badge>
                         ) : null}
                       </div>
                     </TableCell>

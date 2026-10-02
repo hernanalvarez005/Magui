@@ -100,7 +100,7 @@ export function AppShell({
         </div>
       </aside>
 
-      <div className="flex min-h-screen flex-1 flex-col">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         {/* Header mobile + desktop */}
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between border-b border-border bg-card/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-card/80 md:h-16 md:px-6">
           <div className="flex items-center gap-2 md:hidden">
@@ -152,7 +152,7 @@ export function AppShell({
           </DropdownMenu>
         </header>
 
-        <main className="flex-1 pb-20 md:pb-6">{children}</main>
+        <main className="min-w-0 flex-1 pb-20 md:pb-6">{children}</main>
 
         {/* Bottom tab bar mobile */}
         <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 grid border-t border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 md:hidden"
