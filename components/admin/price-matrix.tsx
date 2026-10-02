@@ -33,14 +33,17 @@ interface PriceCell {
   product_id: string;
   price_condition_id: string;
   amount: string;
+  pricing_mode: "AUTO" | "MANUAL";
 }
 
-// Toda condición que no sea BASE (Lista no tiene % propio) puede configurar
-// su discount_percent, que sugiere el precio al tocar la Lista o el propio
-// % — ver isDiscountConfigurable (reemplaza el SUGGESTABLE_CODES hardcodeado
-// que vivía acá, allowlist de ["CASH", "TRANSFER"]). El precio final SIEMPRE
-// queda editable a mano — el % nunca es la fuente de verdad de una venta,
-// product_prices.amount sí lo es.
+// rule_type === "PAYMENT_METHOD" exacto (isDiscountConfigurable) puede
+// configurar su discount_percent, que ahora SÍ alimenta el precio real:
+// Precio de Lista es el maestro — Lista o % cambian -> los precios AUTO de
+// cada condición se recalculan solos (migración 74, Precio de Lista
+// maestro). Un precio nunca se pisa si fue editado a mano (pricing_mode
+// MANUAL, acá o preexistente): queda congelado hasta "Volver a automático",
+// acción explícita por celda. Todo el guardado es una sola llamada atómica
+// a save_price_matrix_changes — nunca N llamadas independientes.
 
 function cellKey(productId: string, conditionId: string) {
   return `${productId}:${conditionId}`;
@@ -63,6 +66,12 @@ export function PriceMatrix({
     return map;
   }, [prices]);
 
+  const originalMode = useMemo(() => {
+    const map = new Map<string, "AUTO" | "MANUAL">();
+    for (const p of prices) map.set(cellKey(p.product_id, p.price_condition_id), p.pricing_mode);
+    return map;
+  }, [prices]);
+
   const originalPercent = useMemo(() => {
     const map = new Map<string, number>();
     for (const c of conditions) map.set(c.id, c.discount_percent ? Number(c.discount_percent) * 100 : 0);
@@ -71,10 +80,25 @@ export function PriceMatrix({
 
   const [edited, setEdited] = useState<Map<string, string>>(new Map());
   const [percentEdited, setPercentEdited] = useState<Map<string, string>>(new Map());
+  // Celdas que el admin tipeó directamente (no por el ripple de Lista/%) —
+  // al guardar se mandan como manual_overrides, pasan a MANUAL. Nunca se
+  // llenan por el cálculo automático, solo por el onChange del propio input.
+  const [manuallyTouched, setManuallyTouched] = useState<Set<string>>(new Set());
+  // "Volver a automático" — al guardar se manda como reset_to_auto; el
+  // servidor recalcula con Lista/% vigentes en ese momento, nunca confía en
+  // el preview local.
+  const [resetToAuto, setResetToAuto] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
 
   const listConditionId = conditions.find((c) => c.code === "LIST")?.id;
   const suggestableConditions = conditions.filter(isDiscountConfigurable);
+
+  /** true si esta celda es (o va a pasar a ser) MANUAL — el ripple de Lista/% nunca la toca, ni en el preview local. */
+  function isCellManual(key: string): boolean {
+    if (resetToAuto.has(key)) return false;
+    if (manuallyTouched.has(key)) return true;
+    return originalMode.get(key) === "MANUAL";
+  }
 
   function valueFor(productId: string, conditionId: string): string {
     const key = cellKey(productId, conditionId);
@@ -98,21 +122,22 @@ export function PriceMatrix({
   }
 
   /**
-   * Sugiere (sobrescribe, sin bloquear la edición posterior) el precio de
-   * cada condición "suggestable" para un producto puntual, a partir de su
-   * Lista actual (editada o persistida) y el % actual (editado o
-   * persistido) de cada condición — sección 4/5 del pedido: se dispara al
-   * cambiar la Lista o el % correspondiente, nunca solo por tipear en el
-   * propio campo de precio final.
+   * Sugiere (preview local, nunca persiste por sí solo) el precio de cada
+   * condición configurable para un producto puntual, a partir de su Lista
+   * actual y el % actual de cada condición — nunca pisa una celda MANUAL,
+   * ni en este preview: el admin la ve congelada hasta "Volver a
+   * automático".
    */
   function suggestForProduct(productId: string, listAmount: number) {
     if (!Number.isFinite(listAmount) || listAmount < 0) return;
     setEdited((prev) => {
       const next = new Map(prev);
       for (const cond of suggestableConditions) {
+        const key = cellKey(productId, cond.id);
+        if (isCellManual(key)) continue;
         const pct = Number(percentValueFor(cond.id) || 0);
         if (!Number.isFinite(pct)) continue;
-        next.set(cellKey(productId, cond.id), String(suggestDiscountedPrice(listAmount, pct)));
+        next.set(key, String(suggestDiscountedPrice(listAmount, pct)));
       }
       return next;
     });
@@ -132,26 +157,61 @@ export function PriceMatrix({
     });
     const pct = Number(value);
     if (!listConditionId || value.trim() === "" || !Number.isFinite(pct)) return;
-    // Recalcula esta condición para TODOS los productos, usando la Lista
-    // actual (editada o persistida) de cada uno.
+    // Recalcula esta condición para TODOS los productos (salvo los MANUAL),
+    // usando la Lista actual (editada o persistida) de cada uno.
     setEdited((prev) => {
       const next = new Map(prev);
       for (const product of products) {
+        const key = cellKey(product.id, conditionId);
+        if (isCellManual(key)) continue;
         const listRaw = prev.get(cellKey(product.id, listConditionId));
         const listAmount = listRaw !== undefined ? Number(listRaw) : original.get(cellKey(product.id, listConditionId));
         if (listAmount === undefined || !Number.isFinite(listAmount)) continue;
-        next.set(cellKey(product.id, conditionId), String(suggestDiscountedPrice(listAmount, pct)));
+        next.set(key, String(suggestDiscountedPrice(listAmount, pct)));
       }
       return next;
     });
   }
 
+  /** Edición directa de una celda no-Lista: pasa (o queda) MANUAL. */
+  function handleManualPriceChange(productId: string, conditionId: string, value: string) {
+    setValue(productId, conditionId, value);
+    const key = cellKey(productId, conditionId);
+    setManuallyTouched((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+    setResetToAuto((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  }
+
+  /** "Volver a automático": el valor final lo calcula el servidor al guardar — esto solo actualiza el preview. */
+  function handleResetToAuto(productId: string, conditionId: string) {
+    const key = cellKey(productId, conditionId);
+    setResetToAuto((prev) => new Set(prev).add(key));
+    setManuallyTouched((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+    const preview = autoPreviewFor(productId, conditionId);
+    if (preview !== null) setValue(productId, conditionId, preview);
+  }
+
+  /** Preview informativo ("Automático sugiere: $X") para una celda MANUAL — nunca se persiste solo. */
+  function autoPreviewFor(productId: string, conditionId: string): string | null {
+    if (!listConditionId) return null;
+    const listAmount = Number(valueFor(productId, listConditionId));
+    const pct = Number(percentValueFor(conditionId) || 0);
+    if (!Number.isFinite(listAmount) || !Number.isFinite(pct)) return null;
+    return String(suggestDiscountedPrice(listAmount, pct));
+  }
+
   function isDirty(productId: string, conditionId: string) {
     const key = cellKey(productId, conditionId);
     if (!edited.has(key)) return false;
-    // Misma normalización que classifyDirtyPriceCells (bugfix: "no hay
-    // cambios para guardar" pasaba porque acá se comparaba distinto que en
-    // el guardado — ver lib/pricing/price-matrix-changes.ts).
     return isPriceCellDirty(edited.get(key)!, original.get(key));
   }
 
@@ -163,100 +223,93 @@ export function PriceMatrix({
   }
 
   async function handleSave() {
-    // Única fuente de verdad para "qué cambió" — el mismo cálculo que
-    // alimenta dirtyCount/isDirty más abajo, así que ya no pueden divergir
-    // (esa era la causa raíz del "No hay cambios para guardar" a pesar de
-    // haber una edición real: acá se usaba un filtro, dirtyCount otro).
     const { toSave, toClear, invalid } = classifyDirtyPriceCells(edited, original);
     const dirtyPercents = suggestableConditions.filter((c) => isPercentDirty(c.id));
 
-    if (toSave.length === 0 && toClear.length === 0 && invalid.length === 0 && dirtyPercents.length === 0) {
-      toast.info("No hay cambios para guardar.");
-      return;
-    }
-
-    setSaving(true);
-    const supabase = createClient();
-    let successCount = 0;
-    let errorMessage: string | null = null;
-    // Solo se limpian del estado local las celdas que efectivamente se
-    // guardaron — si algo falla (RPC, error de red, validación), esa
-    // edición queda escrita para poder reintentar en vez de perderse.
-    const succeededKeys = new Set<string>();
-    const succeededPercentIds = new Set<string>();
-
-    // Los % se guardan primero (columna simple en price_conditions, sin
-    // versionado — no son la fuente de verdad de ninguna venta, solo la
-    // sugerencia para la próxima edición).
-    for (const cond of dirtyPercents) {
-      const pct = Number(percentValueFor(cond.id));
-      if (Number.isNaN(pct) || pct < 0 || pct > 100) {
-        errorMessage = `El porcentaje "${percentValueFor(cond.id)}" de ${cond.name} tiene que estar entre 0 y 100.`;
-        continue;
-      }
-      const { error } = await supabase
-        .from("price_conditions")
-        .update({ discount_percent: String(pct / 100) })
-        .eq("id", cond.id);
-      if (error) errorMessage = error.message;
-      else {
-        successCount++;
-        succeededPercentIds.add(cond.id);
-      }
-    }
-
-    for (const { key, amount } of toSave) {
-      const [productId, conditionId] = key.split(":");
-      const { error } = await supabase.rpc("set_product_price", {
-        p_product_id: productId,
-        p_price_condition_id: conditionId,
-        p_amount: amount,
-      });
-      if (error) {
-        errorMessage = error.message;
-      } else {
-        successCount++;
-        succeededKeys.add(key);
-      }
-    }
-
-    // Precio existente que se dejó vacío: se desactiva la vigencia (nunca
-    // se guarda $0) — ver 20260201000029_clear_product_price.sql.
-    for (const { key } of toClear) {
-      const [productId, conditionId] = key.split(":");
-      const { error } = await supabase.rpc("clear_product_price", {
-        p_product_id: productId,
-        p_price_condition_id: conditionId,
-      });
-      if (error) {
-        errorMessage = error.message;
-      } else {
-        successCount++;
-        succeededKeys.add(key);
-      }
-    }
-
-    setSaving(false);
-    setEdited((prev) => {
-      const next = new Map(prev);
-      for (const key of succeededKeys) next.delete(key);
-      return next;
-    });
-    setPercentEdited((prev) => {
-      const next = new Map(prev);
-      for (const id of succeededPercentIds) next.delete(id);
-      return next;
-    });
-
-    if (successCount > 0) toast.success(`${successCount} cambio(s) guardados.`);
     if (invalid.length > 0) {
       toast.error(
         invalid.length === 1
           ? `El precio "${invalid[0].rawValue}" no es válido — tiene que ser un número mayor a 0.`
           : `${invalid.length} precios no son válidos — tienen que ser un número mayor a 0.`
       );
+      return;
     }
-    if (errorMessage) toast.error(errorMessage);
+
+    const listPriceChanges: { product_id: string; amount: number }[] = [];
+    const manualOverrides: { product_id: string; price_condition_id: string; amount: number }[] = [];
+    const clears: { product_id: string; price_condition_id: string }[] = [];
+
+    for (const { key, amount } of toSave) {
+      const [productId, conditionId] = key.split(":");
+      if (conditionId === listConditionId) {
+        listPriceChanges.push({ product_id: productId, amount });
+      } else if (manuallyTouched.has(key)) {
+        manualOverrides.push({ product_id: productId, price_condition_id: conditionId, amount });
+      }
+      // Si no es Lista y no fue tocada a mano, es solo el preview del ripple
+      // (AUTO) — no se manda: el servidor recalcula solo vía la cascada de
+      // Lista/%, nunca confiando en lo que el cliente tenía dibujado.
+    }
+    for (const { key } of toClear) {
+      const [productId, conditionId] = key.split(":");
+      clears.push({ product_id: productId, price_condition_id: conditionId });
+    }
+
+    const resets: { product_id: string; price_condition_id: string }[] = [];
+    for (const key of resetToAuto) {
+      const [productId, conditionId] = key.split(":");
+      resets.push({ product_id: productId, price_condition_id: conditionId });
+    }
+
+    const percentChanges: { price_condition_id: string; discount_percent: number | null }[] = [];
+    for (const cond of dirtyPercents) {
+      const raw = percentValueFor(cond.id).trim();
+      if (raw === "") {
+        percentChanges.push({ price_condition_id: cond.id, discount_percent: null });
+        continue;
+      }
+      const pct = Number(raw);
+      if (Number.isNaN(pct) || pct < 0 || pct > 100) {
+        toast.error(`El porcentaje "${raw}" de ${cond.name} tiene que estar entre 0 y 100.`);
+        return;
+      }
+      percentChanges.push({ price_condition_id: cond.id, discount_percent: pct / 100 });
+    }
+
+    if (
+      listPriceChanges.length === 0 &&
+      manualOverrides.length === 0 &&
+      clears.length === 0 &&
+      resets.length === 0 &&
+      percentChanges.length === 0
+    ) {
+      toast.info("No hay cambios para guardar.");
+      return;
+    }
+
+    setSaving(true);
+    const supabase = createClient();
+    const { error } = await supabase.rpc("save_price_matrix_changes", {
+      p_list_price_changes: listPriceChanges,
+      p_percent_changes: percentChanges,
+      p_manual_overrides: manualOverrides,
+      p_reset_to_auto: resets,
+      p_clears: clears,
+    });
+    setSaving(false);
+
+    if (error) {
+      // Atómico: si falló, no se guardó NADA — se deja todo el estado local
+      // tal cual para que el admin pueda corregir y reintentar.
+      toast.error(error.message);
+      return;
+    }
+
+    setEdited(new Map());
+    setPercentEdited(new Map());
+    setManuallyTouched(new Set());
+    setResetToAuto(new Set());
+    toast.success("Cambios guardados.");
     router.refresh();
   }
 
@@ -279,11 +332,12 @@ export function PriceMatrix({
                   <div className="flex flex-col items-end gap-1">
                     <span>{c.name}</span>
                     {/* % informativo dentro del propio encabezado de la
-                        condición — toda condición que no sea BASE puede
+                        condición — toda condición PAYMENT_METHOD puede
                         configurarlo (isDiscountConfigurable), nunca un
-                        allowlist de codes. Sugiere el precio de abajo al
-                        tocar la Lista o este mismo %; el precio final
-                        siempre queda editable a mano. */}
+                        allowlist de codes. Alimenta el recálculo automático
+                        en backend (migración 74): el precio final de una
+                        celda AUTO siempre sigue a Lista/% hasta que se
+                        edite a mano. */}
                     {isDiscountConfigurable(c) ? (
                       <div className="flex items-center justify-end gap-1 font-normal">
                         <Input
@@ -316,20 +370,45 @@ export function PriceMatrix({
                 </TableCell>
                 {conditions.map((c) => {
                   const isList = c.id === listConditionId;
+                  const key = cellKey(product.id, c.id);
+                  const manual = !isList && isCellManual(key);
+                  const preview = manual ? autoPreviewFor(product.id, c.id) : null;
                   return (
                     <TableCell key={c.id} className="text-right">
-                      <Input
-                        type="number"
-                        className={cn(
-                          "ml-auto h-8 w-28 text-right",
-                          isDirty(product.id, c.id) && "border-primary ring-1 ring-primary"
-                        )}
-                        placeholder="—"
-                        value={valueFor(product.id, c.id)}
-                        onChange={(e) =>
-                          isList ? handleListChange(product.id, e.target.value) : setValue(product.id, c.id, e.target.value)
-                        }
-                      />
+                      <div className="ml-auto flex w-28 flex-col items-end gap-0.5">
+                        <Input
+                          type="number"
+                          className={cn(
+                            "h-8 w-28 text-right",
+                            isDirty(product.id, c.id) && "border-primary ring-1 ring-primary",
+                            manual && "border-amber-500"
+                          )}
+                          placeholder="—"
+                          value={valueFor(product.id, c.id)}
+                          onChange={(e) =>
+                            isList
+                              ? handleListChange(product.id, e.target.value)
+                              : handleManualPriceChange(product.id, c.id, e.target.value)
+                          }
+                        />
+                        {manual ? (
+                          <div className="flex flex-col items-end gap-0.5 text-right">
+                            <Badge variant="secondary" className="text-[10px]">
+                              Manual
+                            </Badge>
+                            {preview ? (
+                              <span className="text-[10px] text-muted-foreground">Automático: {preview}</span>
+                            ) : null}
+                            <button
+                              type="button"
+                              className="text-[10px] text-primary underline-offset-2 hover:underline"
+                              onClick={() => handleResetToAuto(product.id, c.id)}
+                            >
+                              Volver a automático
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                     </TableCell>
                   );
                 })}

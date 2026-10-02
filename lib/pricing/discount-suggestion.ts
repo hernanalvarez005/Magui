@@ -16,12 +16,18 @@ export function suggestDiscountedPrice(listAmount: number, discountPercent: numb
 
 /**
  * Checkpoint Precios — reemplaza SUGGESTABLE_CODES (allowlist de codes
- * hardcodeada: ["CASH", "TRANSFER"]) en /admin/precios. Toda condición que
- * no sea BASE (Lista no tiene % propio — es la referencia 0%) puede
- * configurar su discount_percent, sin importar code/nombre — una condición
- * nueva creada desde /admin/condiciones-precio (ej. una futura "9 cuotas
- * sin interés", code autogenerado) queda incluida automáticamente.
+ * hardcodeada: ["CASH", "TRANSFER"]) en /admin/precios. rule_type ===
+ * "PAYMENT_METHOD" exacto (no "!== BASE") — mismo criterio exacto que usa
+ * el backend (fn_recalculate_auto_prices, migración 74) para decidir qué
+ * participa del recálculo automático. Antes había una asimetría: el
+ * frontend permitía configurar % en cualquier no-BASE (incluiría QUANTITY
+ * si alguna vez se reactivara), mientras el backend solo recalculaba
+ * PAYMENT_METHOD — ahora ambos usan el mismo criterio, sin asumir nada de
+ * un rule_type futuro. Una condición nueva creada desde
+ * /admin/condiciones-precio (ej. una futura "9 cuotas sin interés", code
+ * autogenerado) queda incluida automáticamente porque sigue siendo
+ * PAYMENT_METHOD, nunca por su code/nombre.
  */
 export function isDiscountConfigurable(condition: { rule_type: string }): boolean {
-  return condition.rule_type !== "BASE";
+  return condition.rule_type === "PAYMENT_METHOD";
 }

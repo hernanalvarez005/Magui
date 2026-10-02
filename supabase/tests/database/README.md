@@ -1,7 +1,7 @@
-# pgTAP — baseline conocido: 82 "throws_ok compatibility artifacts"
+# pgTAP — baseline conocido: 85 "throws_ok compatibility artifacts"
 
 Al correr toda la suite (`pg_prove supabase/tests/database/*.sql`) van a
-aparecer **82 tests marcados como "failed" que NO son regresiones**. Es un
+aparecer **85 tests marcados como "failed" que NO son regresiones**. Es un
 artefacto de compatibilidad del runner local (pgTAP + Tap::Harness vía
 `pg_prove`), no un bug de la aplicación ni de las RPC. Antes de investigar
 cualquier "failed" nuevo, comparar contra esta lista — si coincide
@@ -45,11 +45,12 @@ legible, es la convención establecida en toda la suite — cambiarlo en
 algunos archivos y no en otros generaría inconsistencia sin beneficio real
 (el propósito de cada test ya se verifica correctamente).
 
-## Lista completa (82), por archivo y nº de test
+## Lista completa (85), por archivo y nº de test
 
 | Archivo | Tests fallidos | Total del archivo |
 |---|---|---|
 | `analytics.test.sql` | 9 | 24 |
+| `auto_price_recalculation.test.sql` | 19, 21, 50 | 50 |
 | `billing_status.test.sql` | 12 | 15 |
 | `card6_installments.test.sql` | 11, 15, 16, 21, 22, 23 | 23 |
 | `exchange_legacy_stock_reversal.test.sql` | 17, 21 | 23 |
@@ -71,8 +72,8 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `web_order_history.test.sql` | 14 | 18 |
 | `web_order_paid_method_change.test.sql` | 3, 5, 6 | 7 |
 
-Total: **82 de 835** tests reales de la suite completa (al día de la
-migración 73, visibilidad de condiciones de precio en `/precios` — ver `Origen`).
+Total: **85 de 885** tests reales de la suite completa (al día de la
+migración 74, Precio de Lista maestro y recálculo automático AUTO/MANUAL — ver `Origen`).
 El total de tests crece con cada archivo nuevo, la lista de "failed"
 conocidos no debería, salvo que se agregue un test nuevo que use la misma
 forma de 2 argumentos con una excepción real esperada;
@@ -222,4 +223,17 @@ para ocultarla; un vendedor no puede tocar `visible_in_price_lookup`),
 mismo patrón que el resto de la suite, +2 quirks nuevos — 82/835 a partir
 de acá. `precios_consulta.test.sql` suma 4 casos más (Condiciones 16-19,
 visibilidad sobre una condición `PAYMENT_METHOD` de código desconocido)
-sin agregar quirks — no usan `throws_ok`.
+sin agregar quirks — no usan `throws_ok`. Actualizado una vez más con
+Precio de Lista maestro y recálculo automático AUTO/MANUAL
+(`20260201000074_auto_price_recalculation.sql` — agrega
+`product_prices.pricing_mode`, default `'MANUAL'` para todo lo existente
+sin tocar ningún `amount`/`valid_from`; el helper interno
+`fn_recalculate_auto_prices`, nunca otorgado a PUBLIC/authenticated/anon,
+única implementación de la cascada, invocada desde `create_price_condition`,
+`update_price_condition` y la RPC nueva `save_price_matrix_changes`;
+`discount_percent` ya admite `NULL` real en ambas RPC de condiciones, sin
+forzarlo más a 0). Archivo nuevo `auto_price_recalculation.test.sql`, 50
+casos — 3 `throws_ok` de 2 argumentos sobre rechazos esperados (override
+inválido aborta todo el guardado, no-admin, el helper interno no ejecutable
+directamente), mismo patrón que el resto de la suite, +3 quirks nuevos —
+85/885 a partir de acá.

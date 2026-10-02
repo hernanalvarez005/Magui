@@ -30,11 +30,39 @@ describe("suggestDiscountedPrice — sugerencia de precio (Bloque E)", () => {
     expect(suggestDiscountedPrice(10000, 33)).toBe(6700);
     expect(suggestDiscountedPrice(999, 10)).toBe(899.1);
   });
+
+  // Paridad preview (frontend) <-> fn_recalculate_auto_prices (SQL,
+  // migración 74): round(lista * (1 - %), 2) en numeric de Postgres —
+  // decimal exacto, redondea mitades lejos de cero. Para montos siempre
+  // positivos (todo este dominio) coincide con Math.round de JS, que
+  // también redondea mitades hacia +Infinity = lejos de cero en positivos.
+  // Verificado empíricamente contra psql (round(numeric, 2)) para estos 4
+  // casos, incluido un empate exacto en el 3er decimal (123457 x 12.5% =
+  // 108024.875, redondea a .88 en ambos lados) — documentado acá en vez de
+  // cambiar la fórmula, porque ya son matemáticamente idénticos.
+  it("paridad con SQL: 100000 x 15% = 85000 (sin decimales, caso trivial)", () => {
+    expect(suggestDiscountedPrice(100000, 15)).toBe(85000);
+  });
+
+  it("paridad con SQL: 99999 x 15% = 84999.15", () => {
+    expect(suggestDiscountedPrice(99999, 15)).toBe(84999.15);
+  });
+
+  it("paridad con SQL: 123457 x 12.5% = 108024.88 (empate exacto en el 3er decimal, .875 -> redondea lejos de cero)", () => {
+    expect(suggestDiscountedPrice(123457, 12.5)).toBe(108024.88);
+  });
+
+  it("paridad con SQL: 87543 x 7.25% = 81196.13", () => {
+    expect(suggestDiscountedPrice(87543, 7.25)).toBe(81196.13);
+  });
 });
 
 // Checkpoint Precios — reemplaza SUGGESTABLE_CODES (allowlist hardcodeada
-// ["CASH", "TRANSFER"]) en /admin/precios por un criterio data-driven: toda
-// condición que no sea BASE puede configurar su %, sin importar code/nombre.
+// ["CASH", "TRANSFER"]) en /admin/precios por un criterio data-driven:
+// rule_type === "PAYMENT_METHOD" exacto, sin importar code/nombre. Migración
+// 74 (recálculo automático AUTO/MANUAL): el backend usa el mismo criterio
+// exacto para decidir qué participa de la cascada — antes el frontend era
+// más laxo ("!== BASE"), ahora ambos coinciden a propósito.
 describe("isDiscountConfigurable", () => {
   it("BASE (Lista) nunca tiene % propio", () => {
     expect(isDiscountConfigurable({ rule_type: "BASE" })).toBe(false);
@@ -50,5 +78,9 @@ describe("isDiscountConfigurable", () => {
 
   it("una condición futura con rule_type PAYMENT_METHOD (code desconocido, nunca agregado a ningún allowlist) también puede — demuestra que es data-driven", () => {
     expect(isDiscountConfigurable({ rule_type: "PAYMENT_METHOD" })).toBe(true);
+  });
+
+  it("QUANTITY no muestra % ni participa del recálculo automático — mismo criterio exacto que el backend", () => {
+    expect(isDiscountConfigurable({ rule_type: "QUANTITY" })).toBe(false);
   });
 });
