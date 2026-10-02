@@ -167,6 +167,11 @@ export type ProductPriceRow = {
   product_id: string;
   price_condition_id: string;
   amount: string;
+  // AUTO: generada/actualizada por el recálculo automático (sigue a Lista y
+  // al % de la condición). MANUAL: la escribió un admin a mano — incluye
+  // todo lo que ya existía antes de la migración 74 (nace MANUAL, nunca se
+  // asume su origen). Nunca pasa de MANUAL a AUTO salvo "Volver a automático".
+  pricing_mode: "AUTO" | "MANUAL";
   valid_from: string;
   valid_until: string | null;
   active: boolean;
@@ -1188,7 +1193,10 @@ export type Database = {
       create_price_condition: {
         Args: {
           p_name: string;
-          p_discount_percent: number;
+          // NULL real (migración 74, ya no se fuerza a 0): no participa del
+          // recálculo automático. Si no es NULL y p_active=true, genera
+          // precios AUTO directamente en vez de copiar "Lista".
+          p_discount_percent: number | null;
           p_requires_billing: boolean;
           p_location_codes: string[];
           p_available_web: boolean;
@@ -1203,7 +1211,11 @@ export type Database = {
         Args: {
           p_price_condition_id: string;
           p_name: string;
-          p_discount_percent: number;
+          // NULL real (migración 74): si pasa de no-nulo a NULL, cierra las
+          // filas AUTO vigentes de la condición (preserva MANUAL). Si pasa a
+          // un valor no nulo (o la condición se reactiva ya con % propio),
+          // recalcula vía fn_recalculate_auto_prices.
+          p_discount_percent: number | null;
           p_requires_billing: boolean;
           p_priority: number;
           p_active: boolean;
@@ -1215,6 +1227,28 @@ export type Database = {
           p_visible_in_price_lookup?: boolean | null;
         };
         Returns: { price_condition_id: string; payment_method_id: string };
+      };
+      // Precio de Lista maestro — recálculo automático AUTO/MANUAL
+      // (migración 74). Única RPC de guardado de /admin/precios: Lista, %,
+      // overrides manuales y "volver a automático" en un solo request
+      // atómico — nunca N llamadas independientes.
+      save_price_matrix_changes: {
+        Args: {
+          p_list_price_changes?: { product_id: string; amount: number }[];
+          p_percent_changes?: { price_condition_id: string; discount_percent: number | null }[];
+          p_manual_overrides?: { product_id: string; price_condition_id: string; amount: number }[];
+          p_reset_to_auto?: { product_id: string; price_condition_id: string }[];
+          p_clears?: { product_id: string; price_condition_id: string }[];
+          p_valid_from?: string;
+        };
+        Returns: {
+          list_price_changes: number;
+          clears: number;
+          percent_changes: number;
+          auto_recalculated: number;
+          manual_overrides: number;
+          reset_to_auto: number;
+        };
       };
       clear_product_price: {
         Args: {

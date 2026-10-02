@@ -33,8 +33,11 @@ describe("suggestDiscountedPrice — sugerencia de precio (Bloque E)", () => {
 });
 
 // Checkpoint Precios — reemplaza SUGGESTABLE_CODES (allowlist hardcodeada
-// ["CASH", "TRANSFER"]) en /admin/precios por un criterio data-driven: toda
-// condición que no sea BASE puede configurar su %, sin importar code/nombre.
+// ["CASH", "TRANSFER"]) en /admin/precios por un criterio data-driven:
+// rule_type === "PAYMENT_METHOD" exacto, sin importar code/nombre. Migración
+// 74 (recálculo automático AUTO/MANUAL): el backend usa el mismo criterio
+// exacto para decidir qué participa de la cascada — antes el frontend era
+// más laxo ("!== BASE"), ahora ambos coinciden a propósito.
 describe("isDiscountConfigurable", () => {
   it("BASE (Lista) nunca tiene % propio", () => {
     expect(isDiscountConfigurable({ rule_type: "BASE" })).toBe(false);
@@ -50,5 +53,9 @@ describe("isDiscountConfigurable", () => {
 
   it("una condición futura con rule_type PAYMENT_METHOD (code desconocido, nunca agregado a ningún allowlist) también puede — demuestra que es data-driven", () => {
     expect(isDiscountConfigurable({ rule_type: "PAYMENT_METHOD" })).toBe(true);
+  });
+
+  it("QUANTITY no muestra % ni participa del recálculo automático — mismo criterio exacto que el backend", () => {
+    expect(isDiscountConfigurable({ rule_type: "QUANTITY" })).toBe(false);
   });
 });

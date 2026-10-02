@@ -23,7 +23,7 @@ export default async function AdminPricesPage() {
     supabase.from("price_conditions").select("id, code, name, rule_type, priority, discount_percent").eq("active", true),
     supabase
       .from("product_prices")
-      .select("id, product_id, price_condition_id, amount")
+      .select("id, product_id, price_condition_id, amount, pricing_mode")
       .eq("active", true),
   ]);
 
@@ -33,9 +33,10 @@ export default async function AdminPricesPage() {
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">
         Editar un precio nunca pisa el histórico: se cierra la vigencia anterior y se crea una versión
-        nueva. Las ventas ya confirmadas mantienen el precio con el que se vendieron. El % de Efectivo
-        y Transferencia solo sugiere un precio al cambiar la Lista o el propio %: el valor final que se
-        guarda y se usa al vender es siempre el que quede escrito en la celda, redondeos incluidos.
+        nueva. Las ventas ya confirmadas mantienen el precio con el que se vendieron. Precio de Lista
+        es el precio maestro: cambiar la Lista o el % de una condición recalcula automáticamente sus
+        precios (AUTO) — salvo los que se hayan editado a mano (Manual), que quedan congelados hasta
+        &quot;Volver a automático&quot;. Todo se guarda en un solo paso, atómico.
       </p>
       <PriceMatrix
         products={products ?? []}

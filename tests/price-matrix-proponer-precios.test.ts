@@ -35,9 +35,10 @@ describe("PriceMatrix — 'Proponer precios' eliminado (sección 4 del pedido)",
     expect(source).toContain("suggestDiscountedPrice");
   });
 
-  it("la edición manual y el guardado (set_product_price/clear_product_price) siguen presentes", () => {
-    expect(source).toContain("set_product_price");
-    expect(source).toContain("clear_product_price");
+  it("la edición manual y el guardado siguen presentes — ahora vía la RPC única y atómica save_price_matrix_changes (migración 74, Precio de Lista maestro), ya no set_product_price/clear_product_price por celda", () => {
+    expect(source).toContain("save_price_matrix_changes");
+    expect(source).not.toContain("set_product_price");
+    expect(source).not.toContain("clear_product_price");
     expect(source).toContain("handleSave");
   });
 });
