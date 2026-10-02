@@ -373,7 +373,6 @@ export function PriceMatrix({
                   const isList = c.id === listConditionId;
                   const key = cellKey(product.id, c.id);
                   const manual = !isList && isCellManual(key);
-                  const preview = manual ? autoPreviewFor(product.id, c.id) : null;
                   return (
                     <TableCell key={c.id} className="text-right">
                       <div className="ml-auto flex w-28 flex-col items-end gap-0.5">
@@ -393,21 +392,14 @@ export function PriceMatrix({
                           }
                         />
                         {manual ? (
-                          <div className="flex flex-col items-end gap-0.5 text-right">
-                            <Badge variant="secondary" className="text-[10px]">
-                              Manual
-                            </Badge>
-                            {preview ? (
-                              <span className="text-[10px] text-muted-foreground">Automático: {preview}</span>
-                            ) : null}
-                            <button
-                              type="button"
-                              className="text-[10px] text-primary underline-offset-2 hover:underline"
-                              onClick={() => handleResetToAuto(product.id, c.id)}
-                            >
-                              Volver a automático
-                            </button>
-                          </div>
+                          <Badge
+                            variant="secondary"
+                            className="text-[10px] cursor-pointer select-none hover:bg-secondary/70"
+                            title="Volver a automático"
+                            onClick={() => handleResetToAuto(product.id, c.id)}
+                          >
+                            Manual
+                          </Badge>
                         ) : null}
                       </div>
                     </TableCell>
