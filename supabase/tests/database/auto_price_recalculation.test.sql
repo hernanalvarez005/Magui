@@ -1,8 +1,8 @@
 -- pgTAP: Precio de Lista maestro — recálculo automático AUTO/MANUAL
 -- (migración 74). Casos:
 --   A. Backfill — todo lo preexistente nace MANUAL, sin cambiar amounts.
---   B. Cascada básica: Lista cambia (AUTO recalcula, MANUAL conserva).
---   C. Cascada básica: % cambia (AUTO recalcula, MANUAL conserva).
+--   B. Cascada básica: Lista cambia (recalcula todo el renglón, AUTO y MANUAL).
+--   C. Cascada básica: % cambia (recalcula toda la columna, AUTO y MANUAL).
 --   D. save_price_matrix_changes: overrides manuales y "volver a automático".
 --   E. % NULL no participa / producto sin Lista no participa.
 --   F. Condición inactiva no participa / oculta pero activa sí participa.
@@ -19,15 +19,20 @@
 --   Q. Lista y % cambian juntos en el mismo guardado — AUTO usa ambos
 --      valores nuevos.
 --   R. Migración 075 — un cambio GLOBAL de % pisa MANUAL (incluido el
---      backfill de la 074) y lo deja AUTO; Lista sigue sin pisar MANUAL.
---      Matriz completa del pedido: casos 1-5, 10, 11 nuevos acá; casos
---      6 (J1/J2), 7 (E2/G3), 8 (F1) y 9 (K1-K3) ya cubiertos arriba, sin
---      duplicar. Incluye integridad histórica (fila vieja cerrada, nunca
---      pisada; venta histórica intacta).
+--      backfill de la 074) y lo deja AUTO. Matriz completa del pedido:
+--      casos 1-5, 10, 11 nuevos acá; casos 6 (J1/J2), 7 (E2/G3), 8 (F1) y 9
+--      (K1-K3) ya cubiertos arriba, sin duplicar. Incluye integridad
+--      histórica (fila vieja cerrada, nunca pisada; venta histórica
+--      intacta).
+--   S. Migración 076 — un cambio de Precio Lista también pisa MANUAL (ya
+--      no preserva excepciones manuales del renglón): recalcula TODO el
+--      renglón del producto, cada condición con su propio %, NULL nunca
+--      participa, 0% sí. Matriz completa del pedido + integridad histórica
+--      (mismo patrón que la sección R, pero disparado por Lista).
 --   N. Helper interno fn_recalculate_auto_prices no ejecutable por PUBLIC/anon/authenticated.
 -- Correr con: rebuild local (preamble + seed_026_skus) + pg_prove.
 begin;
-select plan(81);
+select plan(115);
 
 -- ---------------------------------------------------------------------------
 -- A. Backfill: todo lo que ya existía (seed_data + cualquier fixture de
@@ -114,7 +119,7 @@ select is(
 );
 
 -- Convertir esa misma celda a MANUAL con un valor explícito, y volver a
--- cambiar Lista: no debe tocarse.
+-- cambiar Lista: migración 076, el cambio de Lista también pisa MANUAL.
 select save_price_matrix_changes(
   p_manual_overrides := jsonb_build_array(jsonb_build_object(
     'product_id', (select id from products where sku = 'APR-A'),
@@ -137,8 +142,14 @@ select save_price_matrix_changes(
 select is(
   (select amount from product_prices where product_id = (select id from products where sku = 'APR-A')
      and price_condition_id = (select id from price_conditions where code = 'APR-PC15') and active = true),
-  99999::numeric,
-  'B5: Lista cambia de nuevo ($120.000 -> $140.000) pero la celda es MANUAL -> conserva $99.999'
+  119000::numeric,
+  'B5: Lista cambia de nuevo ($120.000 -> $140.000) pisa la excepción MANUAL ($99.999) -> AUTO, $140.000 x 15% = $119.000 (migración 076)'
+);
+select is(
+  (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-A')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PC15') and active = true),
+  'AUTO',
+  'B5b: y la fila de APR-A queda marcada AUTO, no MANUAL'
 );
 
 -- ---------------------------------------------------------------------------
@@ -157,11 +168,26 @@ select is(
   'C1: APR-B Lista $50.000, 15% -> AUTO $42.500'
 );
 
+-- APR-A quedó AUTO desde B5 (la 076 ya la pisó ahí) — para que este bloque
+-- siga demostrando "% global pisa MANUAL" de verdad, la volvemos a convertir
+-- a MANUAL con un valor fresco antes de tocar el %.
+select save_price_matrix_changes(
+  p_manual_overrides := jsonb_build_array(jsonb_build_object(
+    'product_id', (select id from products where sku = 'APR-A'),
+    'price_condition_id', (select id from price_conditions where code = 'APR-PC15'),
+    'amount', 99999
+  ))
+);
+select is(
+  (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-A')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PC15') and active = true),
+  'MANUAL',
+  'C1b: setup — APR-A vuelve a MANUAL ($99.999) para que el cambio de % siga demostrando que la pisa'
+);
+
 -- Cambiar el % de APR-PC15 de 15% a 20% -> recalcula APR-B (AUTO) Y también
--- pisa APR-A (MANUAL desde B4/B5): un cambio GLOBAL de % resetea a AUTO
--- incluso filas MANUAL de esa misma condición (migración 075 — antes de
--- este fix, un % nuevo nunca pisaba MANUAL, sin importar la dirección; ver
--- sección R para la matriz completa de este comportamiento).
+-- pisa APR-A (MANUAL desde C1b): un cambio GLOBAL de % resetea a AUTO
+-- incluso filas MANUAL de esa misma condición (migración 075).
 select save_price_matrix_changes(
   p_percent_changes := jsonb_build_array(jsonb_build_object(
     'price_condition_id', (select id from price_conditions where code = 'APR-PC15'), 'discount_percent', 0.20
@@ -177,7 +203,7 @@ select is(
   (select amount from product_prices where product_id = (select id from products where sku = 'APR-A')
      and price_condition_id = (select id from price_conditions where code = 'APR-PC15') and active = true),
   112000::numeric,
-  'C3: el mismo cambio GLOBAL de % también pisa APR-A (MANUAL $99.999 desde B4/B5) -> AUTO, Lista $140.000 x 20% = $112.000 (migración 075)'
+  'C3: el mismo cambio GLOBAL de % también pisa APR-A (MANUAL $99.999 desde C1b) -> AUTO, Lista $140.000 x 20% = $112.000 (migración 075)'
 );
 select is(
   (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-A')
@@ -618,8 +644,9 @@ select is(
 -- ---------------------------------------------------------------------------
 -- P. Borrar Precio de Lista (p_clears sobre BASE) cierra TODOS los AUTO
 -- dependientes del producto — nunca puede quedar un AUTO vendible derivado
--- de una Lista inexistente. Preserva MANUAL. Recargar Lista los regenera
--- (vía la misma cascada del paso 3, sin lógica paralela).
+-- de una Lista inexistente. El BORRADO (p_clears) preserva MANUAL — es un
+-- mecanismo distinto del CAMBIO de Lista (ver P9: recargar Lista sí pisa
+-- MANUAL, migración 076, vía la misma cascada del paso 3).
 -- ---------------------------------------------------------------------------
 insert into public.products (sku, name, product_type, category, track_stock, commissionable, promo_eligible, active)
 values ('APR-CLR', 'Auto precio clear', 'product', 'Test', true, true, true, true);
@@ -712,8 +739,14 @@ select is(
 select is(
   (select amount from product_prices where product_id = (select id from products where sku = 'APR-CLR')
      and price_condition_id = (select id from price_conditions where code = 'APR-PCMANUAL') and active = true),
-  55555::numeric,
-  'P9: y el MANUAL (condición C) sigue intacto después de recargar Lista'
+  270000::numeric,
+  'P9: y recargar Lista también pisa el MANUAL de APR-CLR (condición C, $55.555) -> AUTO, $300.000 x 10% = $270.000 (migración 076)'
+);
+select is(
+  (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-CLR')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCMANUAL') and active = true),
+  'AUTO',
+  'P9b: y queda AUTO, no MANUAL'
 );
 
 -- ---------------------------------------------------------------------------
@@ -738,8 +771,10 @@ select is(
 -- ---------------------------------------------------------------------------
 -- R. Migración 075 — matriz completa del bug reportado en producción: un
 -- cambio GLOBAL de % tiene que pisar MANUAL (incluido el backfill de la
--- 074) y dejarlo AUTO; Lista sigue sin pisar MANUAL nunca. Fixtures propias
--- (APR-R1/R2/R3, APR-PCR) para no depender del estado acumulado de A-Q.
+-- 074) y dejarlo AUTO. Desde la 076 (sección S, más abajo) un cambio de
+-- Lista hace lo mismo con todo el renglón — acá el caso 3 ya lo refleja.
+-- Fixtures propias (APR-R1/R2/R3, APR-PCR) para no depender del estado
+-- acumulado de A-Q.
 -- Casos 6 (create_price_condition con % -> AUTO: J1/J2), 7 (producto sin
 -- Lista: E2/G3), 8 (condición inactiva: F1) y 9 (%->NULL cierra AUTO,
 -- preserva MANUAL: K1-K3) ya están cubiertos arriba sin cambios de
@@ -831,8 +866,10 @@ select is(
 );
 
 -- -----------------------------------------------------------------------
--- Caso 3: cambiar SOLO Lista (ambos productos) -> la excepción MANUAL de R1
--- persiste, R2 (AUTO) recalcula.
+-- Caso 3: cambiar SOLO Lista (ambos productos) -> desde la 076, un cambio
+-- de Lista también pisa la excepción MANUAL de R1 (igual que ya hace un
+-- cambio de %, caso 1); R2 (AUTO) recalcula igual que siempre. Ver sección
+-- S para la matriz completa de este comportamiento disparado por Lista.
 -- -----------------------------------------------------------------------
 select save_price_matrix_changes(
   p_list_price_changes := jsonb_build_array(
@@ -843,20 +880,37 @@ select save_price_matrix_changes(
 select is(
   (select amount from product_prices where product_id = (select id from products where sku = 'APR-R1')
      and price_condition_id = (select id from price_conditions where code = 'APR-PCR') and active = true),
-  81234::numeric,
-  'R6: caso 3 — cambiar solo Lista NO toca la excepción MANUAL de R1, sigue en $81.234'
+  120000::numeric,
+  'R6: caso 3 — cambiar Lista también pisa la excepción MANUAL de R1 ($81.234) -> AUTO, $150.000 x 20% = $120.000 (migración 076)'
 );
 select is(
   (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-R1')
      and price_condition_id = (select id from price_conditions where code = 'APR-PCR') and active = true),
-  'MANUAL',
-  'R7: caso 3 — y sigue MANUAL'
+  'AUTO',
+  'R7: caso 3 — y queda AUTO, no MANUAL'
 );
 select is(
   (select amount from product_prices where product_id = (select id from products where sku = 'APR-R2')
      and price_condition_id = (select id from price_conditions where code = 'APR-PCR') and active = true),
   200000::numeric,
-  'R8: caso 3 — R2 (AUTO) recalcula con la nueva Lista $250.000 x 20% = $200.000'
+  'R8: caso 3 — R2 (ya AUTO) recalcula igual con la nueva Lista $250.000 x 20% = $200.000'
+);
+
+-- R1 quedó AUTO desde el caso 3 (076 ya la pisó ahí) — para que el caso 4
+-- siga demostrando "% global pisa MANUAL" de verdad, la volvemos a
+-- convertir a MANUAL con un valor fresco antes de tocar el %.
+select save_price_matrix_changes(
+  p_manual_overrides := jsonb_build_array(jsonb_build_object(
+    'product_id', (select id from products where sku = 'APR-R1'),
+    'price_condition_id', (select id from price_conditions where code = 'APR-PCR'),
+    'amount', 91234
+  ))
+);
+select is(
+  (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-R1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCR') and active = true),
+  'MANUAL',
+  'R8b: setup — R1 vuelve a MANUAL ($91.234) para que el caso 4 siga demostrando que el % global lo pisa'
 );
 
 -- -----------------------------------------------------------------------
@@ -871,7 +925,7 @@ select is(
   (select amount from product_prices where product_id = (select id from products where sku = 'APR-R1')
      and price_condition_id = (select id from price_conditions where code = 'APR-PCR') and active = true),
   112500::numeric,
-  'R9: caso 4 — R1 (MANUAL $81.234) pisado de nuevo, Lista $150.000 x 25% = $112.500'
+  'R9: caso 4 — R1 (MANUAL $91.234 desde R8b) pisado de nuevo, Lista $150.000 x 25% = $112.500'
 );
 select is(
   (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-R1')
@@ -1087,6 +1141,358 @@ select is(
   (select sale_unit_price from public.sale_items where id = :'r11_sale_item_id'),
   44444::numeric,
   'R27: integridad histórica — la venta histórica (sale_items) que referenciaba el precio MANUAL viejo sigue intacta, nunca se recalculó'
+);
+
+-- ---------------------------------------------------------------------------
+-- S. Migración 076 — matriz completa del bug reportado en el smoke final: un
+-- cambio de Precio Lista tiene que pisar MANUAL (recalcular TODO el renglón
+-- del producto, cada condición con su propio %), igual que ya hace un
+-- cambio de % con la columna (sección R). Fixtures propias (APR-S1/S2,
+-- APR-PCS-A/B/NULL/ZERO) para no depender del estado acumulado de A-R.
+-- discount_percent NULL nunca participa (ni Lista ni %); 0% sí. Incluye
+-- integridad histórica (mismo patrón que R21-R27, disparado por Lista).
+-- ---------------------------------------------------------------------------
+insert into public.products (sku, name, product_type, category, track_stock, commissionable, promo_eligible, active) values
+  ('APR-S1', 'Auto precio S1', 'product', 'Test', true, true, true, true),
+  ('APR-S2', 'Auto precio S2 (sin Lista)', 'product', 'Test', true, true, true, true);
+
+insert into public.payment_methods (code, name, active, requires_billing, sort_order) values
+  ('APR-PMS-A', 'Medio S A', true, false, 995),
+  ('APR-PMS-B', 'Medio S B', true, false, 994),
+  ('APR-PMS-NULL', 'Medio S sin %', true, false, 993),
+  ('APR-PMS-ZERO', 'Medio S 0%', true, false, 992);
+insert into public.price_conditions (code, name, rule_type, payment_method_id, discount_percent, priority, combinable, active) values
+  ('APR-PCS-A', 'Condición S A 10%', 'PAYMENT_METHOD', (select id from payment_methods where code = 'APR-PMS-A'), 0.10, 58, false, true),
+  ('APR-PCS-B', 'Condición S B 25%', 'PAYMENT_METHOD', (select id from payment_methods where code = 'APR-PMS-B'), 0.25, 59, false, true),
+  ('APR-PCS-NULL', 'Condición S sin %', 'PAYMENT_METHOD', (select id from payment_methods where code = 'APR-PMS-NULL'), null, 60, false, true),
+  ('APR-PCS-ZERO', 'Condición S 0%', 'PAYMENT_METHOD', (select id from payment_methods where code = 'APR-PMS-ZERO'), 0, 61, false, true);
+
+-- -----------------------------------------------------------------------
+-- Setup: Lista S1 = $100.000, SIN ninguna fila previa bajo ninguna
+-- condición -> caso "producto sin fila previa de product_prices" (se crean
+-- en AUTO). Cada condición usa su propio %; NULL no participa ni crea fila;
+-- 0% participa y da el mismo importe que Lista.
+-- -----------------------------------------------------------------------
+select save_price_matrix_changes(
+  p_list_price_changes := jsonb_build_array(jsonb_build_object(
+    'product_id', (select id from products where sku = 'APR-S1'), 'amount', 100000
+  ))
+);
+select is(
+  (select amount from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-A') and active = true),
+  90000::numeric,
+  'S1: setup — sin fila previa bajo APR-PCS-A (10%), Lista $100.000 -> se CREA en AUTO, $90.000'
+);
+select is(
+  (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-A') and active = true),
+  'AUTO',
+  'S2: setup — y nace AUTO'
+);
+select is(
+  (select amount from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-B') and active = true),
+  75000::numeric,
+  'S3: setup — APR-PCS-B (25%, distinto % que A) también se crea, cada condición usa el suyo: $75.000'
+);
+select is(
+  (select amount from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-ZERO') and active = true),
+  100000::numeric,
+  'S4: setup — APR-PCS-ZERO (0%, porcentaje configurado válido) participa: AUTO = Lista = $100.000'
+);
+select is(
+  (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-ZERO') and active = true),
+  'AUTO',
+  'S5: setup — y nace AUTO, no "sin configurar"'
+);
+select is(
+  (select count(*)::int from product_prices
+     where product_id = (select id from products where sku = 'APR-S1')
+       and price_condition_id = (select id from price_conditions where code = 'APR-PCS-NULL')),
+  0,
+  'S6: setup — APR-PCS-NULL (sin % configurado) no participa ni crea ninguna fila'
+);
+
+-- -----------------------------------------------------------------------
+-- Caso 1: AUTO -> cambio Lista -> recalcula todo el renglón de nuevo.
+-- Caso 3 (combinado acá): cada condición sigue usando su propio %.
+-- -----------------------------------------------------------------------
+select save_price_matrix_changes(
+  p_list_price_changes := jsonb_build_array(jsonb_build_object(
+    'product_id', (select id from products where sku = 'APR-S1'), 'amount', 120000
+  ))
+);
+select is(
+  (select amount from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-A') and active = true),
+  108000::numeric,
+  'S7: caso 1 — AUTO recalcula con la nueva Lista (APR-PCS-A, 10%), $120.000 x 90% = $108.000'
+);
+select is(
+  (select amount from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-B') and active = true),
+  90000::numeric,
+  'S8: caso 3 — en el MISMO cambio, APR-PCS-B (25%) usa su propio %, $120.000 x 75% = $90.000'
+);
+select is(
+  (select amount from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-ZERO') and active = true),
+  120000::numeric,
+  'S9: caso 9 — 0% sigue igual a la Lista nueva ($120.000)'
+);
+select is(
+  (select count(*)::int from product_prices
+     where product_id = (select id from products where sku = 'APR-S1')
+       and price_condition_id = (select id from price_conditions where code = 'APR-PCS-NULL')),
+  0,
+  'S10: caso 8 — NULL sigue sin participar tras un segundo cambio de Lista'
+);
+
+-- -----------------------------------------------------------------------
+-- Caso 2 + integridad histórica: MANUAL -> cambio Lista -> recalculado y
+-- pasa a AUTO. La fila MANUAL vieja se cierra (nunca se pisa su amount/
+-- valid_from), la nueva nace AUTO, y una venta histórica que referenciaba
+-- el precio MANUAL viejo queda intacta.
+-- -----------------------------------------------------------------------
+select save_price_matrix_changes(
+  p_manual_overrides := jsonb_build_array(jsonb_build_object(
+    'product_id', (select id from products where sku = 'APR-S1'),
+    'price_condition_id', (select id from price_conditions where code = 'APR-PCS-A'),
+    'amount', 77777
+  ))
+);
+select is(
+  (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-A') and active = true),
+  'MANUAL',
+  'S11: setup — APR-S1/APR-PCS-A pasa a MANUAL ($77.777)'
+);
+
+-- Captura la fila MANUAL vigente ANTES del cambio de Lista, para verificar
+-- después que nunca se pisa (solo se cierra).
+select id as s1a_before_id, valid_from as s1a_before_valid_from
+from public.product_prices
+where product_id = (select id from products where sku = 'APR-S1')
+  and price_condition_id = (select id from price_conditions where code = 'APR-PCS-A')
+  and active = true \gset
+
+-- Venta histórica que referenció ese precio MANUAL ($77.777) — snapshot
+-- inmutable (sale_items), tiene que seguir intacta después del recálculo.
+reset role;
+insert into public.sales (
+  sale_number, sold_at, location_id, sales_channel_id, seller_id, payment_method_id,
+  subtotal, discount_total, total, status
+) values (
+  'MJ-APR076-TEST-0001', now() - interval '2 days',
+  (select id from stock_locations where code = 'DEP'),
+  (select id from sales_channels limit 1),
+  'aae00000-0000-0000-0000-000000000002',
+  (select id from payment_methods where code = 'CASH'),
+  120000.00, 42223.00, 77777.00, 'confirmed'
+) returning id as s11_sale_id \gset
+
+insert into public.sale_items (
+  sale_id, product_id, quantity, list_unit_price, sale_unit_price,
+  line_list_total, line_discount, line_total, applied_price_condition_id, commissionable
+) values (
+  :'s11_sale_id', (select id from products where sku = 'APR-S1'), 1, 120000.00, 77777.00,
+  120000.00, 42223.00, 77777.00, (select id from price_conditions where code = 'APR-PCS-A'), true
+) returning id as s11_sale_item_id \gset
+
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'aae00000-0000-0000-0000-000000000001', false);
+
+-- Cambiar Lista -> debe pisar el MANUAL y dejar AUTO.
+select save_price_matrix_changes(
+  p_list_price_changes := jsonb_build_array(jsonb_build_object(
+    'product_id', (select id from products where sku = 'APR-S1'), 'amount', 130000
+  ))
+);
+select is(
+  (select amount from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-A') and active = true),
+  117000::numeric,
+  'S12: caso 2 — MANUAL ($77.777) pisado por el cambio de Lista -> AUTO, $130.000 x 90% = $117.000 (migración 076)'
+);
+select is(
+  (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-A') and active = true),
+  'AUTO',
+  'S13: caso 2 — y queda AUTO, no MANUAL'
+);
+
+-- Integridad histórica — la fila vieja (MANUAL $77.777) NUNCA se pisa: se
+-- cierra (valid_until/active), nunca se le muta el amount ni el valid_from.
+select is(
+  (select amount from public.product_prices where id = :'s1a_before_id'),
+  77777::numeric,
+  'S14: integridad histórica — la fila MANUAL vieja conserva su amount original ($77.777), nunca se pisa con UPDATE destructivo'
+);
+select is(
+  (select valid_from from public.product_prices where id = :'s1a_before_id')::text,
+  :'s1a_before_valid_from',
+  'S15: integridad histórica — y conserva también su valid_from original'
+);
+select is(
+  (select active from public.product_prices where id = :'s1a_before_id'),
+  false,
+  'S16: integridad histórica — la fila vieja queda cerrada (active=false)'
+);
+select ok(
+  (select valid_until from public.product_prices where id = :'s1a_before_id') is not null,
+  'S17: integridad histórica — y con un valid_until asignado (cierre explícito, no un borrado)'
+);
+
+-- La fila nueva (AUTO $117.000) es una fila DISTINTA, nunca la misma reutilizada.
+select id as s1a_after_id, valid_from as s1a_after_valid_from
+from public.product_prices
+where product_id = (select id from products where sku = 'APR-S1')
+  and price_condition_id = (select id from price_conditions where code = 'APR-PCS-A')
+  and active = true \gset
+
+select isnt(
+  :'s1a_after_id'::uuid,
+  :'s1a_before_id'::uuid,
+  'S18: integridad histórica — la fila AUTO nueva tiene un id distinto de la fila MANUAL vieja (nunca se reutiliza la misma fila)'
+);
+select ok(
+  (select valid_until from public.product_prices where id = :'s1a_before_id') <= :'s1a_after_valid_from'::timestamptz,
+  'S19: integridad histórica — la vigencia de la fila nueva empieza en o después del cierre de la vieja (sin solaparse)'
+);
+
+-- Y la venta histórica que referenciaba el precio MANUAL viejo sigue
+-- exactamente igual — sale_items nunca se recalcula.
+select is(
+  (select sale_unit_price from public.sale_items where id = :'s11_sale_item_id'),
+  77777::numeric,
+  'S20: integridad histórica — la venta histórica (sale_items) que referenciaba el precio MANUAL viejo sigue intacta, nunca se recalculó'
+);
+
+-- -----------------------------------------------------------------------
+-- Caso 4: cambio Lista -> edición individual -> solo esa celda queda MANUAL.
+-- -----------------------------------------------------------------------
+select save_price_matrix_changes(
+  p_manual_overrides := jsonb_build_array(jsonb_build_object(
+    'product_id', (select id from products where sku = 'APR-S1'),
+    'price_condition_id', (select id from price_conditions where code = 'APR-PCS-A'),
+    'amount', 55555
+  ))
+);
+select is(
+  (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-A') and active = true),
+  'MANUAL',
+  'S21: caso 4 — editar APR-PCS-A individualmente la vuelve MANUAL ($55.555)'
+);
+select is(
+  (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-B') and active = true),
+  'AUTO',
+  'S22: caso 4 — y NO afecta a APR-PCS-B, que sigue AUTO (solo esa celda queda Manual)'
+);
+
+-- -----------------------------------------------------------------------
+-- Caso 5: edición individual -> nuevo cambio Lista -> desaparece la
+-- excepción y vuelve a AUTO.
+-- -----------------------------------------------------------------------
+select save_price_matrix_changes(
+  p_list_price_changes := jsonb_build_array(jsonb_build_object(
+    'product_id', (select id from products where sku = 'APR-S1'), 'amount', 140000
+  ))
+);
+select is(
+  (select amount from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-A') and active = true),
+  126000::numeric,
+  'S23: caso 5 — el nuevo cambio de Lista pisa la excepción MANUAL recién creada ($55.555) -> AUTO, $140.000 x 90% = $126.000'
+);
+select is(
+  (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-A') and active = true),
+  'AUTO',
+  'S24: caso 5 — y queda AUTO'
+);
+
+-- -----------------------------------------------------------------------
+-- Caso 6: Lista y % cambian en el MISMO guardado -> usa ambos valores
+-- nuevos (incluso sobre una celda MANUAL).
+-- -----------------------------------------------------------------------
+select save_price_matrix_changes(
+  p_manual_overrides := jsonb_build_array(jsonb_build_object(
+    'product_id', (select id from products where sku = 'APR-S1'),
+    'price_condition_id', (select id from price_conditions where code = 'APR-PCS-A'),
+    'amount', 66666
+  ))
+);
+select is(
+  (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-A') and active = true),
+  'MANUAL',
+  'S25: setup — APR-PCS-A vuelve a MANUAL ($66.666) para el caso combinado'
+);
+select save_price_matrix_changes(
+  p_list_price_changes := jsonb_build_array(jsonb_build_object(
+    'product_id', (select id from products where sku = 'APR-S1'), 'amount', 150000
+  )),
+  p_percent_changes := jsonb_build_array(jsonb_build_object(
+    'price_condition_id', (select id from price_conditions where code = 'APR-PCS-A'), 'discount_percent', 0.20
+  ))
+);
+select is(
+  (select amount from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-A') and active = true),
+  120000::numeric,
+  'S26: caso 6 — Lista $140k->$150k y % 10%->20% en el MISMO guardado -> $150.000 x 80% = $120.000 (nunca con un valor viejo, MANUAL $66.666 pisado)'
+);
+select is(
+  (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-A') and active = true),
+  'AUTO',
+  'S27: caso 6 — y queda AUTO'
+);
+
+-- -----------------------------------------------------------------------
+-- Condición futura PAYMENT_METHOD con % configurado (creada después de
+-- escribir todo el código de arriba) participa de un cambio de Lista sin
+-- ningún cambio de código — data-driven, nunca hardcodeada por code/nombre.
+-- -----------------------------------------------------------------------
+insert into public.payment_methods (code, name, active, requires_billing, sort_order)
+values ('APR-PMS-FUTURE', 'Medio S futuro', true, false, 991);
+insert into public.price_conditions (code, name, rule_type, payment_method_id, discount_percent, priority, combinable, active)
+values (
+  'APR-PCS-FUTURE', 'Condición S futura 50%', 'PAYMENT_METHOD',
+  (select id from payment_methods where code = 'APR-PMS-FUTURE'), 0.50, 62, false, true
+);
+select save_price_matrix_changes(
+  p_list_price_changes := jsonb_build_array(jsonb_build_object(
+    'product_id', (select id from products where sku = 'APR-S1'), 'amount', 160000
+  ))
+);
+select is(
+  (select amount from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-FUTURE') and active = true),
+  80000::numeric,
+  'S28: condición futura (creada después del código) con % configurado participa de un cambio de Lista sin tocar código, $160.000 x 50% = $80.000'
+);
+select is(
+  (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-S1')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCS-FUTURE') and active = true),
+  'AUTO',
+  'S29: y nace AUTO'
+);
+
+-- -----------------------------------------------------------------------
+-- Producto SIN Lista (APR-S2) -> no participa de ninguna condición al
+-- cambiar % (mismo criterio ya probado para Lista en E2/G3, acá del lado
+-- de un producto nuevo sin ninguna fila de product_prices en absoluto).
+-- -----------------------------------------------------------------------
+select is(
+  (select count(*)::int from product_prices where product_id = (select id from products where sku = 'APR-S2')),
+  0,
+  'S30: APR-S2 nunca tuvo Lista -> 0 filas de product_prices, ninguna condición le generó nada'
 );
 
 -- ---------------------------------------------------------------------------
