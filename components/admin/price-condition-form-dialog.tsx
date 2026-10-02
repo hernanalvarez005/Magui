@@ -28,6 +28,7 @@ export interface EditablePriceCondition {
   priority: number;
   location_codes: string[];
   available_web: boolean;
+  visible_in_price_lookup: boolean;
 }
 
 export interface BranchLocationOption {
@@ -63,6 +64,7 @@ export function PriceConditionFormDialog({
   const [priority, setPriority] = useState(condition?.priority ?? Math.max(1, listPriority - 1));
   const [locationCodes, setLocationCodes] = useState<string[]>(condition?.location_codes ?? []);
   const [availableWeb, setAvailableWeb] = useState(condition?.available_web ?? false);
+  const [visibleInPriceLookup, setVisibleInPriceLookup] = useState(condition?.visible_in_price_lookup ?? true);
   const [saving, setSaving] = useState(false);
 
   function toggleLocation(code: string) {
@@ -79,6 +81,7 @@ export function PriceConditionFormDialog({
       priority: Number(priority),
       location_codes: locationCodes,
       available_web: availableWeb,
+      visible_in_price_lookup: visibleInPriceLookup,
     });
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? "Revisá los datos de la condición.");
@@ -99,6 +102,7 @@ export function PriceConditionFormDialog({
         p_active: parsed.data.active,
         p_location_codes: parsed.data.location_codes,
         p_available_web: parsed.data.available_web,
+        p_visible_in_price_lookup: parsed.data.visible_in_price_lookup,
       });
       setSaving(false);
       if (error) {
@@ -119,6 +123,7 @@ export function PriceConditionFormDialog({
       p_active: parsed.data.active,
       p_copy_prices_from_code: "LIST",
       p_priority: parsed.data.priority,
+      p_visible_in_price_lookup: parsed.data.visible_in_price_lookup,
     });
     setSaving(false);
     if (error) {
@@ -193,6 +198,15 @@ export function PriceConditionFormDialog({
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
             Activa (una condición desactivada deja de ofrecerse en ventas nuevas; nunca se borra ni afecta ventas ya hechas)
+          </label>
+
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={visibleInPriceLookup}
+              onChange={(e) => setVisibleInPriceLookup(e.target.checked)}
+            />
+            Visible en Precios (independiente de Activa — ocultarla acá nunca la desactiva para la venta)
           </label>
 
           <div className="flex flex-col gap-2">

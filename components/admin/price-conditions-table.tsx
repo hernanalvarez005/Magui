@@ -30,6 +30,7 @@ export interface PriceConditionRow {
   name: string;
   is_base: boolean;
   active: boolean;
+  visible_in_price_lookup: boolean;
   discount_percent: string | null;
   requires_billing: boolean;
   priority: number;
@@ -82,6 +83,34 @@ export function PriceConditionsTable({
     router.refresh();
   }
 
+  // Toggle rápido de "Visible en Precios" — eje independiente de "Activa"
+  // (migración 73): ocultarla de /precios nunca la desactiva para la venta.
+  // p_visible_in_price_lookup es la única novedad acá; el resto de los
+  // parámetros de la RPC siguen siendo reemplazo completo (igual que
+  // toggleActive), así que se manda el valor actual de cada uno tal cual.
+  async function toggleVisibility(row: PriceConditionRow, visible: boolean) {
+    setSavingId(row.id);
+    const supabase = createClient();
+    const { error } = await supabase.rpc("update_price_condition", {
+      p_price_condition_id: row.id,
+      p_name: row.name,
+      p_discount_percent: row.discount_percent ? Number(row.discount_percent) : 0,
+      p_requires_billing: row.requires_billing,
+      p_priority: row.priority,
+      p_active: row.active,
+      p_location_codes: row.location_codes,
+      p_available_web: row.available_web,
+      p_visible_in_price_lookup: visible,
+    });
+    setSavingId(null);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    setOverrides((prev) => ({ ...prev, [row.id]: { ...prev[row.id], visible_in_price_lookup: visible } }));
+    router.refresh();
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex justify-end gap-2">
@@ -101,6 +130,7 @@ export function PriceConditionsTable({
             <TableRow>
               <TableHead>Condición</TableHead>
               <TableHead>Estado</TableHead>
+              <TableHead>Visible en Precios</TableHead>
               <TableHead className="text-right">Ajuste</TableHead>
               <TableHead>Requiere facturación</TableHead>
               <TableHead>Disponibilidad</TableHead>
@@ -127,6 +157,29 @@ export function PriceConditionsTable({
                       />
                       <Badge variant={c.active ? "success" : "warning"}>{c.active ? "Activa" : "Desactivada"}</Badge>
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    {/* BASE (Lista) nunca ofrece el control — siempre visible
+                        en /precios, sin importar la columna (ver migración
+                        73 y app/(app)/precios/page.tsx). Para el resto, el
+                        toggle es explícito acá — no solo escondido en el
+                        formulario de edición — para que Administración vea
+                        de un vistazo que "Activa" y "Visible en Precios" son
+                        dos ejes independientes. */}
+                    {c.is_base ? (
+                      <Badge variant="secondary">Siempre</Badge>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={c.visible_in_price_lookup}
+                          disabled={savingId === c.id}
+                          onCheckedChange={(v) => toggleVisibility(c, v)}
+                        />
+                        <Badge variant={c.visible_in_price_lookup ? "success" : "secondary"}>
+                          {c.visible_in_price_lookup ? "Visible" : "Oculta"}
+                        </Badge>
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     {c.discount_percent && Number(c.discount_percent) > 0 ? (
@@ -165,7 +218,7 @@ export function PriceConditionsTable({
               ))}
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="py-6 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={8} className="py-6 text-center text-sm text-muted-foreground">
                   Todavía no hay condiciones de precio cargadas.
                 </TableCell>
               </TableRow>
@@ -188,6 +241,7 @@ export function PriceConditionsTable({
                   priority: editing.priority,
                   location_codes: editing.location_codes,
                   available_web: editing.available_web,
+                  visible_in_price_lookup: editing.visible_in_price_lookup,
                 } satisfies EditablePriceCondition)
           }
           branchLocations={branchLocations}

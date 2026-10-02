@@ -1,7 +1,7 @@
-# pgTAP — baseline conocido: 80 "throws_ok compatibility artifacts"
+# pgTAP — baseline conocido: 82 "throws_ok compatibility artifacts"
 
 Al correr toda la suite (`pg_prove supabase/tests/database/*.sql`) van a
-aparecer **80 tests marcados como "failed" que NO son regresiones**. Es un
+aparecer **82 tests marcados como "failed" que NO son regresiones**. Es un
 artefacto de compatibilidad del runner local (pgTAP + Tap::Harness vía
 `pg_prove`), no un bug de la aplicación ni de las RPC. Antes de investigar
 cualquier "failed" nuevo, comparar contra esta lista — si coincide
@@ -45,7 +45,7 @@ legible, es la convención establecida en toda la suite — cambiarlo en
 algunos archivos y no en otros generaría inconsistencia sin beneficio real
 (el propósito de cada test ya se verifica correctamente).
 
-## Lista completa (62), por archivo y nº de test
+## Lista completa (82), por archivo y nº de test
 
 | Archivo | Tests fallidos | Total del archivo |
 |---|---|---|
@@ -54,7 +54,7 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `card6_installments.test.sql` | 11, 15, 16, 21, 22, 23 | 23 |
 | `exchange_legacy_stock_reversal.test.sql` | 17, 21 | 23 |
 | `mejoras.test.sql` | 1, 6, 8, 11 | 12 |
-| `price_conditions_admin.test.sql` | 7, 9, 19, 20, 28, 31, 32, 33, 40, 43, 46, 47, 50, 55, 56, 72, 73, 74 | 78 |
+| `price_conditions_admin.test.sql` | 7, 9, 19, 20, 28, 31, 32, 33, 40, 43, 46, 47, 50, 55, 56, 72, 73, 74, 86, 87 | 87 |
 | `pricing_and_sales.test.sql` | 9 | 11 |
 | `promotion_payment_methods.test.sql` | 1, 2, 3, 4, 11, 12, 15, 16, 17, 19, 20, 22, 23 | 25 |
 | `promotion_per_line_stacking.test.sql` | 14, 16 | 18 |
@@ -71,8 +71,8 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `web_order_history.test.sql` | 14 | 18 |
 | `web_order_paid_method_change.test.sql` | 3, 5, 6 | 7 |
 
-Total: **80 de 803** tests reales de la suite completa (al día de la
-migración 71, circuito de pago/facturación de `create_web_order` — ver `Origen`).
+Total: **82 de 835** tests reales de la suite completa (al día de la
+migración 73, visibilidad de condiciones de precio en `/precios` — ver `Origen`).
 El total de tests crece con cada archivo nuevo, la lista de "failed"
 conocidos no debería, salvo que se agregue un test nuevo que use la misma
 forma de 2 argumentos con una excepción real esperada;
@@ -207,4 +207,19 @@ afectaba a CARD_6 y a cualquier condición nueva creada desde
 `price_conditions_admin.test.sql`, +19 casos — L13/L14/L15, `throws_ok` de 2
 argumentos sobre rechazos esperados (PAID sin cuenta, Web deshabilitada,
 SHIPPING fuera de Depósito), mismo patrón que el resto de la suite) —
-80/803 a partir de acá.
+80/803 a partir de acá. Actualizado una vez más con la generalización del
+% de sugerencia a toda condición `PAYMENT_METHOD` en `/admin/precios` y la
+visibilidad administrable en `/precios` vía `visible_in_price_lookup`
+(`20260201000073_price_condition_visibility.sql` — agrega la columna y
+extiende `create_price_condition`/`update_price_condition` con
+`DROP FUNCTION IF EXISTS` + `CREATE OR REPLACE`, sin tocar la 69/70; PATCH
+semantics en `update_price_condition`: `p_visible_in_price_lookup boolean
+default null` preserva el valor existente cuando se omite, para no romper
+callers que no lo pasan, como el toggle "Activa"). Sección M nueva de
+`price_conditions_admin.test.sql`, +9 casos (M1-M7) — M6/M7, `throws_ok` de
+2 argumentos sobre rechazos esperados (BASE/LIST sigue sin ser editable ni
+para ocultarla; un vendedor no puede tocar `visible_in_price_lookup`),
+mismo patrón que el resto de la suite, +2 quirks nuevos — 82/835 a partir
+de acá. `precios_consulta.test.sql` suma 4 casos más (Condiciones 16-19,
+visibilidad sobre una condición `PAYMENT_METHOD` de código desconocido)
+sin agregar quirks — no usan `throws_ok`.

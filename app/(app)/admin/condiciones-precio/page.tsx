@@ -21,7 +21,7 @@ export default async function AdminPriceConditionsPage() {
     // romper la integridad de sale_items históricos — nunca se muestran acá.
     supabase
       .from("price_conditions")
-      .select("id, code, name, rule_type, payment_method_id, discount_percent, priority, active")
+      .select("id, code, name, rule_type, payment_method_id, discount_percent, priority, active, visible_in_price_lookup")
       .neq("rule_type", "QUANTITY")
       .order("priority"),
     supabase.from("payment_methods").select("id, name, requires_billing"),
@@ -57,6 +57,7 @@ export default async function AdminPriceConditionsPage() {
       name: c.name,
       is_base: c.rule_type === "BASE",
       active: c.active,
+      visible_in_price_lookup: c.visible_in_price_lookup,
       discount_percent: c.discount_percent,
       requires_billing: pm?.requires_billing ?? false,
       priority: c.priority,

@@ -13,10 +13,12 @@
 --   K. "9 cuotas test" — prueba estructural data-driven, condición ficticia — 9 casos.
 --   L. create_web_order + circuito de pago/facturación (migración 71,
 --      Checkpoint 2.1) — 19 casos.
+--   M. visible_in_price_lookup — visibilidad en /precios, independiente de
+--      active (migración 73) — 9 casos.
 -- Correr con: rebuild local (preamble + seed_026_skus antes de la migración
 -- 26) + pg_prove.
 begin;
-select plan(78);
+select plan(87);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: admin con acceso a ambas sedes, vendedora sin permisos de
@@ -913,6 +915,121 @@ select ok(
     ) ->> 'sale_id') is not null
   ),
   'L18: condición nueva y ficticia ("Web Shipping Test", requires_billing=true, Web habilitada) funciona por el mismo camino SHIPPING+PENDING, sin cambio de código — arquitectura data-driven demostrada también para el circuito Web'
+);
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'aca00000-0000-0000-0000-000000000001', false);
+
+-- ===========================================================================
+-- SECCIÓN M — visible_in_price_lookup (migración 73): eje independiente de
+-- active. "¿se puede vender?" (active) vs. "¿aparece en /precios?"
+-- (visible_in_price_lookup) nunca se confunden.
+-- ===========================================================================
+
+-- M1: create_price_condition sin pasar el parámetro nuevo -> default true
+-- (toda condición nace visible salvo que el admin la oculte al crearla).
+select create_price_condition(
+  'PCA Visibilidad Default', 0, false, array['SED-25'], false
+) as m1_result \gset
+select (:'m1_result'::jsonb ->> 'price_condition_id')::uuid as m1_pc_id \gset
+select is(
+  (select visible_in_price_lookup from price_conditions where id = :'m1_pc_id'::uuid),
+  true,
+  'M1: create_price_condition sin p_visible_in_price_lookup -> default true'
+);
+
+-- M2: create_price_condition con el parámetro explícito en false.
+select create_price_condition(
+  'PCA Visibilidad Oculta Desde Alta', 0, false, array['SED-25'], false,
+  true, 'LIST', null, false
+) as m2_result \gset
+select (:'m2_result'::jsonb ->> 'price_condition_id')::uuid as m2_pc_id \gset
+select is(
+  (select visible_in_price_lookup from price_conditions where id = :'m2_pc_id'::uuid),
+  false,
+  'M2: create_price_condition con p_visible_in_price_lookup=false nace oculta'
+);
+
+-- M3: update_price_condition cambia visible_in_price_lookup explícitamente.
+select update_price_condition(
+  :'m1_pc_id'::uuid, 'PCA Visibilidad Default', 0, false,
+  (select priority from price_conditions where id = :'m1_pc_id'::uuid),
+  true, array['SED-25'], false, false
+);
+select is(
+  (select visible_in_price_lookup from price_conditions where id = :'m1_pc_id'::uuid),
+  false,
+  'M3: update_price_condition con p_visible_in_price_lookup=false la oculta'
+);
+
+-- M4: EL CASO CLAVE — update_price_condition SIN pasar el parámetro nuevo
+-- (semántica PATCH, default null) preserva el valor ya guardado. Simula
+-- exactamente lo que hace toggleActive() en price-conditions-table.tsx: solo
+-- le interesa cambiar "active", nunca debería resetear la visibilidad.
+select update_price_condition(
+  p_price_condition_id := :'m1_pc_id'::uuid,
+  p_name := 'PCA Visibilidad Default',
+  p_discount_percent := 0,
+  p_requires_billing := false,
+  p_priority := (select priority from price_conditions where id = :'m1_pc_id'::uuid),
+  p_active := false,
+  p_location_codes := array['SED-25'],
+  p_available_web := false
+);
+select is(
+  (select visible_in_price_lookup from price_conditions where id = :'m1_pc_id'::uuid),
+  false,
+  'M4: update_price_condition SIN p_visible_in_price_lookup preserva el valor existente (false de M3) — no lo resetea a true'
+);
+select is(
+  (select active from price_conditions where id = :'m1_pc_id'::uuid),
+  false,
+  'M4b: mientras tanto, active sí cambió al valor pasado — confirma que M4 es específico de visible_in_price_lookup, no que la llamada entera no tuvo efecto'
+);
+
+-- M5: ocultar una condición (visible=false) NO la desactiva, no le saca
+-- disponibilidad, y sigue siendo vendible — demuestra el desacople completo
+-- que pide el cliente. m2 ya nació active=true/visible=false en M2 — se usa
+-- tal cual, sin ningún update intermedio, para que la venta pruebe
+-- exactamente ese estado "oculta pero 100% vendible".
+select set_product_price((select id from products where sku = 'PCA-N'), :'m2_pc_id'::uuid, 8800);
+select ok(
+  (
+    (create_sale(
+      jsonb_build_array(jsonb_build_object('product_id', (select id from products where sku = 'PCA-N'), 'quantity', 1)),
+      :'sed25_id', :'branch_channel_id', (select payment_method_id from price_conditions where id = :'m2_pc_id'::uuid),
+      null, null, null, null, null, now(), false, null, null, false, null
+    ) ->> 'sale_id') is not null
+  ),
+  'M5: una condición oculta en /precios (visible_in_price_lookup=false) sigue siendo 100% vendible — active y disponibilidad intactas'
+);
+select is(
+  (select visible_in_price_lookup from price_conditions where id = :'m2_pc_id'::uuid),
+  false,
+  'M5b: y después de vender con ella, sigue oculta — vender no la hace visible ni viceversa'
+);
+
+-- M6: BASE (LIST) no es editable por update_price_condition en absoluto —
+-- mismo rechazo ya establecido para cualquier otro campo (comentario de
+-- cabecera de la migración 70), confirma que tampoco hay forma de tocarle
+-- visible_in_price_lookup desde acá.
+select throws_ok(
+  format(
+    $$select update_price_condition('%s'::uuid, 'Lista', 0, false, 1, true, array[]::text[], false, false)$$,
+    (select id from price_conditions where code = 'LIST')
+  ),
+  'M6: update_price_condition rechaza la condición BASE/LIST — tampoco puede ocultarla de /precios'
+);
+
+-- M7: un vendedor (no admin) no puede cambiar visible_in_price_lookup —
+-- mismo is_admin() que ya protege el resto de la función.
+set role authenticated;
+select set_config('request.jwt.claim.sub', 'aca00000-0000-0000-0000-000000000002', false);
+select throws_ok(
+  format(
+    $$select update_price_condition('%s'::uuid, 'PCA Visibilidad Default', 0, false, 1, true, array['SED-25'], false, true)$$,
+    :'m1_pc_id'
+  ),
+  'M7: un vendedor no puede cambiar visible_in_price_lookup (rechazado por is_admin())'
 );
 set role authenticated;
 select set_config('request.jwt.claim.sub', 'aca00000-0000-0000-0000-000000000001', false);

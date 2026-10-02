@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { suggestDiscountedPrice } from "@/lib/pricing/discount-suggestion";
+import { isDiscountConfigurable, suggestDiscountedPrice } from "@/lib/pricing/discount-suggestion";
 
 // Bloque E — Precios automáticos por porcentaje + edición manual.
 // Casos 1, 2, 5 y 6 de la sección 16 del pedido (la sugerencia matemática;
@@ -29,5 +29,26 @@ describe("suggestDiscountedPrice — sugerencia de precio (Bloque E)", () => {
   it("redondea a 2 decimales", () => {
     expect(suggestDiscountedPrice(10000, 33)).toBe(6700);
     expect(suggestDiscountedPrice(999, 10)).toBe(899.1);
+  });
+});
+
+// Checkpoint Precios — reemplaza SUGGESTABLE_CODES (allowlist hardcodeada
+// ["CASH", "TRANSFER"]) en /admin/precios por un criterio data-driven: toda
+// condición que no sea BASE puede configurar su %, sin importar code/nombre.
+describe("isDiscountConfigurable", () => {
+  it("BASE (Lista) nunca tiene % propio", () => {
+    expect(isDiscountConfigurable({ rule_type: "BASE" })).toBe(false);
+  });
+
+  it("CASH y TRANSFER (ya lo tenían) siguen pudiendo configurarlo", () => {
+    expect(isDiscountConfigurable({ rule_type: "PAYMENT_METHOD" })).toBe(true);
+  });
+
+  it("una condición de cuotas (CARD_1/3/6, antes excluida por no estar en el allowlist) también puede", () => {
+    expect(isDiscountConfigurable({ rule_type: "PAYMENT_METHOD" })).toBe(true);
+  });
+
+  it("una condición futura con rule_type PAYMENT_METHOD (code desconocido, nunca agregado a ningún allowlist) también puede — demuestra que es data-driven", () => {
+    expect(isDiscountConfigurable({ rule_type: "PAYMENT_METHOD" })).toBe(true);
   });
 });

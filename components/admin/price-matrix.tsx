@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/client";
-import { suggestDiscountedPrice } from "@/lib/pricing/discount-suggestion";
+import { isDiscountConfigurable, suggestDiscountedPrice } from "@/lib/pricing/discount-suggestion";
 import { classifyDirtyPriceCells, isPriceCellDirty } from "@/lib/pricing/price-matrix-changes";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +24,7 @@ interface ConditionCol {
   id: string;
   code: string;
   name: string;
+  rule_type: string;
   priority: number;
   discount_percent: string | null;
 }
@@ -34,13 +35,12 @@ interface PriceCell {
   amount: string;
 }
 
-// Bloque E: Efectivo y Transferencia tienen además un % configurable
-// (price_conditions.discount_percent, ya existía como campo "informativo" —
-// acá pasa a alimentar de verdad la sugerencia) que sugiere el precio al
-// tocar la Lista o el propio %. El precio final SIEMPRE queda editable a
-// mano — el % nunca es la fuente de verdad de una venta, product_prices.amount
-// sí lo es (fn_pricing_quote/fn_apply_promotions no leen discount_percent).
-const SUGGESTABLE_CODES = ["CASH", "TRANSFER"];
+// Toda condición que no sea BASE (Lista no tiene % propio) puede configurar
+// su discount_percent, que sugiere el precio al tocar la Lista o el propio
+// % — ver isDiscountConfigurable (reemplaza el SUGGESTABLE_CODES hardcodeado
+// que vivía acá, allowlist de ["CASH", "TRANSFER"]). El precio final SIEMPRE
+// queda editable a mano — el % nunca es la fuente de verdad de una venta,
+// product_prices.amount sí lo es.
 
 function cellKey(productId: string, conditionId: string) {
   return `${productId}:${conditionId}`;
@@ -74,7 +74,7 @@ export function PriceMatrix({
   const [saving, setSaving] = useState(false);
 
   const listConditionId = conditions.find((c) => c.code === "LIST")?.id;
-  const suggestableConditions = conditions.filter((c) => SUGGESTABLE_CODES.includes(c.code));
+  const suggestableConditions = conditions.filter(isDiscountConfigurable);
 
   function valueFor(productId: string, conditionId: string): string {
     const key = cellKey(productId, conditionId);
@@ -274,52 +274,35 @@ export function PriceMatrix({
           <TableHeader>
             <TableRow>
               <TableHead className="sticky left-0 bg-card">Producto</TableHead>
-              {conditions.map((c) =>
-                SUGGESTABLE_CODES.includes(c.code) ? (
-                  <Fragment key={c.id}>
-                    <TableHead className="text-right">{c.name} %</TableHead>
-                    <TableHead className="text-right">{c.name}</TableHead>
-                  </Fragment>
-                ) : (
-                  <TableHead key={c.id} className="text-right">
-                    {c.name}
-                  </TableHead>
-                )
-              )}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {/* Fila del % por condición — Efectivo y Transferencia únicamente
-                (sección 1/7 del pedido). Es una única fila porque el % es
-                global por condición, no por producto. */}
-            <TableRow className="bg-muted/40">
-              <TableCell className="sticky left-0 bg-muted/40 text-xs text-muted-foreground">
-                % OFF sobre Lista (aplica a todos los productos)
-              </TableCell>
-              {conditions.map((c) =>
-                SUGGESTABLE_CODES.includes(c.code) ? (
-                  <Fragment key={c.id}>
-                    <TableCell className="text-right">
-                      <div className="ml-auto flex w-28 items-center justify-end gap-1">
+              {conditions.map((c) => (
+                <TableHead key={c.id} className="text-right align-top">
+                  <div className="flex flex-col items-end gap-1">
+                    <span>{c.name}</span>
+                    {/* % informativo dentro del propio encabezado de la
+                        condición — toda condición que no sea BASE puede
+                        configurarlo (isDiscountConfigurable), nunca un
+                        allowlist de codes. Sugiere el precio de abajo al
+                        tocar la Lista o este mismo %; el precio final
+                        siempre queda editable a mano. */}
+                    {isDiscountConfigurable(c) ? (
+                      <div className="flex items-center justify-end gap-1 font-normal">
                         <Input
                           type="number"
                           min={0}
                           max={100}
-                          className={cn("h-8 text-right", isPercentDirty(c.id) && "border-primary ring-1 ring-primary")}
+                          className={cn("h-7 w-16 text-right text-xs", isPercentDirty(c.id) && "border-primary ring-1 ring-primary")}
                           value={percentValueFor(c.id)}
                           onChange={(e) => handlePercentChange(c.id, e.target.value)}
                         />
                         <span className="text-xs text-muted-foreground">%</span>
                       </div>
-                    </TableCell>
-                    <TableCell />
-                  </Fragment>
-                ) : (
-                  <TableCell key={c.id} />
-                )
-              )}
+                    ) : null}
+                  </div>
+                </TableHead>
+              ))}
             </TableRow>
-
+          </TableHeader>
+          <TableBody>
             {products.map((product) => (
               <TableRow key={product.id}>
                 <TableCell className="sticky left-0 bg-card font-medium">
@@ -333,28 +316,20 @@ export function PriceMatrix({
                 </TableCell>
                 {conditions.map((c) => {
                   const isList = c.id === listConditionId;
-                  const cell = (
-                    <Input
-                      type="number"
-                      className={cn(
-                        "ml-auto h-8 w-28 text-right",
-                        isDirty(product.id, c.id) && "border-primary ring-1 ring-primary"
-                      )}
-                      placeholder="—"
-                      value={valueFor(product.id, c.id)}
-                      onChange={(e) =>
-                        isList ? handleListChange(product.id, e.target.value) : setValue(product.id, c.id, e.target.value)
-                      }
-                    />
-                  );
-                  return SUGGESTABLE_CODES.includes(c.code) ? (
-                    <Fragment key={c.id}>
-                      <TableCell />
-                      <TableCell className="text-right">{cell}</TableCell>
-                    </Fragment>
-                  ) : (
+                  return (
                     <TableCell key={c.id} className="text-right">
-                      {cell}
+                      <Input
+                        type="number"
+                        className={cn(
+                          "ml-auto h-8 w-28 text-right",
+                          isDirty(product.id, c.id) && "border-primary ring-1 ring-primary"
+                        )}
+                        placeholder="—"
+                        value={valueFor(product.id, c.id)}
+                        onChange={(e) =>
+                          isList ? handleListChange(product.id, e.target.value) : setValue(product.id, c.id, e.target.value)
+                        }
+                      />
                     </TableCell>
                   );
                 })}
