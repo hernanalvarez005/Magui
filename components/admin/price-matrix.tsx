@@ -438,7 +438,11 @@ export function PriceMatrix({
                 </TableCell>
                 {conditions.map((c) => {
                   const isList = c.id === listConditionId;
-                  const manual = !isList && isCellManual(product.id, c.id);
+                  // Puramente visual: el badge "Manual" es feedback de una
+                  // edición directa EN ESTA SESIÓN, nunca una lectura del
+                  // pricing_mode persistido — ver isCellManual (más abajo)
+                  // para la lógica funcional (preview/ripple), que no cambia.
+                  const showManualBadge = manuallyTouched.has(cellKey(product.id, c.id));
                   return (
                     <TableCell key={c.id} className="px-2 text-right">
                       <div className="ml-auto flex w-24 flex-col items-end gap-0.5">
@@ -447,7 +451,7 @@ export function PriceMatrix({
                           className={cn(
                             "h-8 w-24 px-2 text-right",
                             isDirty(product.id, c.id) && "border-primary ring-1 ring-primary",
-                            manual && "border-amber-500"
+                            showManualBadge && "border-amber-500"
                           )}
                           placeholder="—"
                           value={valueFor(product.id, c.id)}
@@ -457,7 +461,7 @@ export function PriceMatrix({
                               : handleManualPriceChange(product.id, c.id, e.target.value)
                           }
                         />
-                        {manual ? (
+                        {showManualBadge ? (
                           <Badge
                             variant="secondary"
                             className="text-[10px] cursor-pointer select-none hover:bg-secondary/70"
