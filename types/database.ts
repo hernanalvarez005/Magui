@@ -157,6 +157,7 @@ export type PriceConditionRow = {
   priority: number;
   combinable: boolean;
   active: boolean;
+  visible_in_price_lookup: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -1194,6 +1195,7 @@ export type Database = {
           p_active?: boolean;
           p_copy_prices_from_code?: string;
           p_priority?: number | null;
+          p_visible_in_price_lookup?: boolean;
         };
         Returns: CreatePriceConditionResult;
       };
@@ -1207,6 +1209,10 @@ export type Database = {
           p_active: boolean;
           p_location_codes: string[];
           p_available_web: boolean;
+          // PATCH: default null del lado del servidor preserva el valor ya
+          // guardado — ver migración 73. Acá optional alcanza (omitirlo o
+          // pasar null hacen lo mismo).
+          p_visible_in_price_lookup?: boolean | null;
         };
         Returns: { price_condition_id: string; payment_method_id: string };
       };

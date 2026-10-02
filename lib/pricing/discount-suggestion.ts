@@ -13,3 +13,15 @@ export function suggestDiscountedPrice(listAmount: number, discountPercent: numb
   const raw = listAmount * (1 - discountPercent / 100);
   return Math.round((raw + Number.EPSILON) * 100) / 100;
 }
+
+/**
+ * Checkpoint Precios — reemplaza SUGGESTABLE_CODES (allowlist de codes
+ * hardcodeada: ["CASH", "TRANSFER"]) en /admin/precios. Toda condición que
+ * no sea BASE (Lista no tiene % propio — es la referencia 0%) puede
+ * configurar su discount_percent, sin importar code/nombre — una condición
+ * nueva creada desde /admin/condiciones-precio (ej. una futura "9 cuotas
+ * sin interés", code autogenerado) queda incluida automáticamente.
+ */
+export function isDiscountConfigurable(condition: { rule_type: string }): boolean {
+  return condition.rule_type !== "BASE";
+}

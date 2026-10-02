@@ -40,11 +40,19 @@ export default async function PreciosPage() {
       // en vez de code hace que esta pantalla nunca vuelva a quedar
       // desactualizada por una condición nueva. Mismo criterio que ya usa
       // /admin/precios (lib/pricing/condition-order.ts).
+      //
+      // visible_in_price_lookup (migración 73): eje independiente de active
+      // — Administración puede ocultar una condición de ESTA pantalla sin
+      // afectar su venta. BASE (Lista) ignora la columna acá mismo, a
+      // propósito: el .or() la incluye siempre sin importar su valor — es
+      // el precio de referencia, nunca tiene sentido esconderlo, y no hay
+      // ningún control en el admin para ponerle false (ver migración 73).
       supabase
         .from("price_conditions")
         .select("id, code, name, rule_type, priority")
         .eq("active", true)
-        .in("rule_type", ["BASE", "PAYMENT_METHOD"]),
+        .in("rule_type", ["BASE", "PAYMENT_METHOD"])
+        .or("rule_type.eq.BASE,visible_in_price_lookup.eq.true"),
       // Sin filtrar por condición: además de las que se muestran como
       // columnas, hace falta el precio bajo la condición base que declare
       // CADA promoción (puede ser cualquiera) para calcular "Precio promo"

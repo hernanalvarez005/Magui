@@ -25,6 +25,7 @@ export function makePriceConditionSchema(listPriority: number) {
         .max(9999),
       location_codes: z.array(z.string()),
       available_web: z.boolean(),
+      visible_in_price_lookup: z.boolean(),
     })
     .superRefine((data, ctx) => {
       if (data.priority >= listPriority) {
