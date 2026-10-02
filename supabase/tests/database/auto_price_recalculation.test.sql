@@ -16,7 +16,7 @@
 --   N. Helper interno fn_recalculate_auto_prices no ejecutable por PUBLIC/anon/authenticated.
 -- Correr con: rebuild local (preamble + seed_026_skus) + pg_prove.
 begin;
-select plan(37);
+select plan(40);
 
 -- ---------------------------------------------------------------------------
 -- A. Backfill: todo lo que ya existía (seed_data + cualquier fixture de
@@ -366,12 +366,46 @@ select is(
   'J3: create_price_condition sin % (NULL explícito) crea la condición con discount_percent NULL de verdad'
 );
 select is(
+  (select count(*)::int from product_prices
+     where price_condition_id = (select id from price_conditions where name = 'APR sin porcentaje')),
+  0,
+  'J4: y SIN % NO copia ni genera nada — nace sin ningún product_prices (ni MANUAL ni AUTO), para que una asignación posterior de % encuentre "ausencia de fila" y pueda generar AUTO'
+);
+
+-- Secuencia explícita pedida: crear sin % -> 0 filas -> asignar 20% ->
+-- AUTO creados para todos los productos con Lista, importe correcto.
+select update_price_condition(
+  p_price_condition_id := (select id from price_conditions where name = 'APR sin porcentaje'),
+  p_name := 'APR sin porcentaje',
+  p_discount_percent := 0.20,
+  p_requires_billing := false,
+  p_priority := 11,
+  p_active := true,
+  p_location_codes := array[]::text[],
+  p_available_web := true
+);
+select is(
+  (select amount from product_prices
+     where product_id = (select id from products where sku = 'APR-A')
+       and price_condition_id = (select id from price_conditions where name = 'APR sin porcentaje')
+       and active = true),
+  112000::numeric,
+  'J5: NULL->20% sobre la condición recién creada (0 filas previas) genera AUTO para APR-A (Lista $140.000 -> $112.000)'
+);
+select is(
   (select pricing_mode from product_prices
      where product_id = (select id from products where sku = 'APR-A')
        and price_condition_id = (select id from price_conditions where name = 'APR sin porcentaje')
        and active = true),
-  'MANUAL',
-  'J4: y SIN % usa el camino preexistente — copia el precio de Lista tal cual, como MANUAL (nunca genera AUTO sin %)'
+  'AUTO',
+  'J6: y nace AUTO, no MANUAL'
+);
+select is(
+  (select count(*)::int from product_prices
+     where product_id = (select id from products where sku = 'APR-NOLIST')
+       and price_condition_id = (select id from price_conditions where name = 'APR sin porcentaje')),
+  0,
+  'J7: APR-NOLIST (sin Lista vigente) sigue sin recibir ninguna fila'
 );
 
 -- ---------------------------------------------------------------------------

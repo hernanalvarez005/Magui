@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pencil, Plus, Table2 } from "lucide-react";
+import { Pencil, Plus, Table2, Zap } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,7 @@ import {
   type BranchLocationOption,
   type EditablePriceCondition,
 } from "@/components/admin/price-condition-form-dialog";
+import { ActivateAutoPricingDialog } from "@/components/admin/activate-auto-pricing-dialog";
 
 export interface PriceConditionRow {
   id: string;
@@ -52,6 +53,7 @@ export function PriceConditionsTable({
   const [overrides, setOverrides] = useState<Record<string, Partial<PriceConditionRow>>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editing, setEditing] = useState<PriceConditionRow | "new" | null>(null);
+  const [activatingAuto, setActivatingAuto] = useState<PriceConditionRow | null>(null);
   const rows = conditions.map((c) => ({ ...c, ...overrides[c.id] }));
 
   // Toggle rápido de "Activa" sin abrir el formulario — pasa igual por la
@@ -209,9 +211,21 @@ export function PriceConditionsTable({
                     {c.is_base ? (
                       <span className="text-xs text-muted-foreground">—</span>
                     ) : (
-                      <Button variant="ghost" size="icon" onClick={() => setEditing(c)}>
-                        <Pencil className="size-4" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        {c.active && c.discount_percent !== null ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Activar automático — recalcula los precios de esta condición a partir de Lista y %, con preview antes de guardar"
+                            onClick={() => setActivatingAuto(c)}
+                          >
+                            <Zap className="size-4" />
+                          </Button>
+                        ) : null}
+                        <Button variant="ghost" size="icon" onClick={() => setEditing(c)}>
+                          <Pencil className="size-4" />
+                        </Button>
+                      </div>
                     )}
                   </TableCell>
                 </TableRow>
@@ -250,6 +264,20 @@ export function PriceConditionsTable({
           onOpenChange={(o) => !o && setEditing(null)}
           onSaved={() => {
             setEditing(null);
+            router.refresh();
+          }}
+        />
+      ) : null}
+
+      {activatingAuto ? (
+        <ActivateAutoPricingDialog
+          conditionId={activatingAuto.id}
+          conditionName={activatingAuto.name}
+          discountPercent={Number(activatingAuto.discount_percent ?? 0)}
+          open
+          onOpenChange={(o) => !o && setActivatingAuto(null)}
+          onActivated={() => {
+            setActivatingAuto(null);
             router.refresh();
           }}
         />

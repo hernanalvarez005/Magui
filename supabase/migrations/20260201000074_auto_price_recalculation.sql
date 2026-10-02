@@ -169,13 +169,19 @@ revoke execute on function public.fn_recalculate_auto_prices(uuid[], uuid[], tim
 --       0) lo pisaba siempre). NULL sigue significando "no participa del
 --       recálculo automático", nunca "0% de descuento".
 --
---    b) Si nace con % configurado (not null) Y activa: en vez de copiar los
---       precios de "Lista" tal cual (el comportamiento de siempre, pensado
---       para una condición SIN % conectado al pricing), genera directamente
+--    b) Si nace con % configurado (not null) Y activa: genera directamente
 --       precios AUTO con la fórmula — es el caso que pide el cliente: crear
 --       "9 cuotas -20%" tiene que generar los precios ya mismo, sin una
---       segunda edición. Si nace sin % (NULL), se mantiene EXACTAMENTE el
---       comportamiento preexistente (copia desde "Lista", como MANUAL).
+--       segunda edición. Si nace sin % (NULL), o con % pero inactiva, NO
+--       copia nada de "Lista" ni genera nada — nace sin ningún
+--       product_prices. Esto CAMBIA el comportamiento preexistente (069/070
+--       copiaban siempre desde "Lista" al crear, sin importar el %): bajo
+--       el modelo AUTO/MANUAL, copiar dejaba una fila MANUAL que el helper
+--       nunca pisa, así que un NULL->valor posterior (vía
+--       update_price_condition) nunca llegaba a generar AUTO — encontraba
+--       "MANUAL ya existente", no "ausencia de fila". Sin ninguna fila
+--       previa, el helper la crea en AUTO apenas se le asigna un %, sin
+--       necesidad de pasar por la Matriz.
 -- ---------------------------------------------------------------------------
 create or replace function public.create_price_condition(
   p_name text,
@@ -271,40 +277,35 @@ begin
     select v_price_condition_id, sc.id from public.sales_channels sc where sc.code = 'WEB';
   end if;
 
-  if p_discount_percent is null then
-    -- Sin % conectado al pricing: comportamiento preexistente, copia única
-    -- desde la condición de origen (MANUAL, por default de columna).
-    with copied as (
-      insert into public.product_prices (product_id, price_condition_id, amount, valid_from)
-      select pp.product_id, v_price_condition_id, pp.amount, now()
-      from public.product_prices pp
-      where pp.price_condition_id = v_source_condition_id
-        and pp.active = true
-        and (pp.valid_until is null or pp.valid_until > now())
-      returning product_id
-    )
-    select count(*) into v_copied_count from copied;
-  elsif p_active then
-    -- % configurado y activa: genera precios AUTO directamente, sin copiar
-    -- nada de "Lista" — es el caso "crear '9 cuotas -20%%' ya con precios".
+  if p_discount_percent is not null and p_active then
+    -- % configurado y activa: genera precios AUTO directamente vía el
+    -- helper — es el caso "crear '9 cuotas -20%%' ya con precios".
     v_copied_count := public.fn_recalculate_auto_prices(
       array[]::uuid[], array[v_price_condition_id], now()
     );
-  end if;
-  -- % configurado pero inactiva: ni copia ni genera — nace sin precios,
-  -- coherente con "condición inactiva no participa".
 
-  select coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'sku', p.sku, 'name', p.name)), '[]'::jsonb)
-  into v_skipped_products
-  from public.products p
-  where p.active
-    and not exists (
-      select 1 from public.product_prices pp
-      where pp.product_id = p.id
-        and pp.price_condition_id = v_source_condition_id
-        and pp.active = true
-        and (pp.valid_until is null or pp.valid_until > now())
-    );
+    select coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'sku', p.sku, 'name', p.name)), '[]'::jsonb)
+    into v_skipped_products
+    from public.products p
+    where p.active
+      and not exists (
+        select 1 from public.product_prices pp
+        where pp.product_id = p.id
+          and pp.price_condition_id = v_source_condition_id
+          and pp.active = true
+          and (pp.valid_until is null or pp.valid_until > now())
+      );
+  end if;
+  -- % NULL (sin configurar), o % configurado pero inactiva: NO copia nada
+  -- de "Lista" ni genera nada — nace sin ningún product_prices. Antes de
+  -- este ajuste, % NULL copiaba snapshots MANUAL de Lista (comportamiento
+  -- heredado de 069/070, previo al modelo AUTO/MANUAL); bajo ese modelo
+  -- correctora: dejaba creada una fila MANUAL que el helper nunca pisa, así
+  -- que un NULL->valor posterior nunca llegaba a generar AUTO (encontraba
+  -- "MANUAL", no "ausencia de fila"). Ahora, al no existir ninguna fila,
+  -- NULL->valor (vía update_price_condition) SÍ crea AUTO para todos los
+  -- productos con Lista, como corresponde. v_skipped_products queda '[]'::jsonb
+  -- (default) porque no se intentó nada, no porque algo haya fallado.
 
   insert into public.audit_logs (user_id, action, entity_type, entity_id, metadata)
   values (
@@ -337,10 +338,11 @@ $$;
 
 comment on function public.create_price_condition(text, numeric, boolean, text[], boolean, boolean, text, int, boolean) is
   'Crea una condición de precio administrable completa en una sola operación atómica: '
-  'payment_method + price_condition + disponibilidad (sedes/Web). Si p_discount_percent es NULL, '
-  'copia los precios iniciales de "Lista" (MANUAL, comportamiento preexistente). Si no es NULL y '
-  'p_active=true, genera directamente precios AUTO vía fn_recalculate_auto_prices — nunca copia en '
-  'ese caso. Solo admin (is_admin()).';
+  'payment_method + price_condition + disponibilidad (sedes/Web). Si p_discount_percent no es NULL y '
+  'p_active=true, genera directamente precios AUTO vía fn_recalculate_auto_prices. Si es NULL (o '
+  'activa=false), NO crea ningún product_prices — nace sin precios, para que una asignación posterior '
+  'de % (vía update_price_condition) encuentre ausencia de fila y genere AUTO, en vez de encontrar un '
+  'MANUAL que nunca se pisaría. Solo admin (is_admin()).';
 
 -- ---------------------------------------------------------------------------
 -- 4) update_price_condition — mismo signature (9 args), CREATE OR REPLACE
