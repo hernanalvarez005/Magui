@@ -206,7 +206,9 @@ export function PriceConditionFormDialog({
               checked={visibleInPriceLookup}
               onChange={(e) => setVisibleInPriceLookup(e.target.checked)}
             />
-            Visible en Precios (independiente de Activa — ocultarla acá nunca la desactiva para la venta)
+            Visible para vendedoras (define si esta condición aparece en la consulta de Precios de las
+            vendedoras — Administración siempre puede verla ahí; independiente de Activa, ocultarla acá
+            nunca la desactiva para la venta)
           </label>
 
           <div className="flex flex-col gap-2">

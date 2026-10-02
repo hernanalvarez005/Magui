@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
 
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/auth/get-profile";
 import { activePromotionsQuery } from "@/lib/promotions/active-promotions";
+import { isPriceConditionVisibleForRole } from "@/lib/pricing/price-lookup-visibility";
 import { PreciosView } from "@/components/precios/precios-view";
 
 export const metadata: Metadata = { title: "Precios" };
 
 export default async function PreciosPage() {
+  const profile = await getCurrentProfile();
   const supabase = await createClient();
 
   // Fuente única de verdad: las mismas tablas que usa Administración
@@ -41,18 +44,17 @@ export default async function PreciosPage() {
       // desactualizada por una condición nueva. Mismo criterio que ya usa
       // /admin/precios (lib/pricing/condition-order.ts).
       //
-      // visible_in_price_lookup (migración 73): eje independiente de active
-      // — Administración puede ocultar una condición de ESTA pantalla sin
-      // afectar su venta. BASE (Lista) ignora la columna acá mismo, a
-      // propósito: el .or() la incluye siempre sin importar su valor — es
-      // el precio de referencia, nunca tiene sentido esconderlo, y no hay
-      // ningún control en el admin para ponerle false (ver migración 73).
+      // visible_in_price_lookup (migración 73) afecta EXCLUSIVAMENTE a
+      // vendedoras/viewer — Administración siempre ve el set completo acá
+      // también (ajuste post-release). Por eso la query ya no filtra por
+      // esta columna: trae TODO lo activo de BASE/PAYMENT_METHOD, y el
+      // filtro por rol se aplica después, en TypeScript, con
+      // isPriceConditionVisibleForRole (lib/pricing/price-lookup-visibility.ts).
       supabase
         .from("price_conditions")
-        .select("id, code, name, rule_type, priority")
+        .select("id, code, name, rule_type, priority, visible_in_price_lookup")
         .eq("active", true)
-        .in("rule_type", ["BASE", "PAYMENT_METHOD"])
-        .or("rule_type.eq.BASE,visible_in_price_lookup.eq.true"),
+        .in("rule_type", ["BASE", "PAYMENT_METHOD"]),
       // Sin filtrar por condición: además de las que se muestran como
       // columnas, hace falta el precio bajo la condición base que declare
       // CADA promoción (puede ser cualquiera) para calcular "Precio promo"
@@ -66,6 +68,12 @@ export default async function PreciosPage() {
     ? await supabase.from("promotion_products").select("promotion_id, product_id").in("promotion_id", promotionIds)
     : { data: [] as { promotion_id: string; product_id: string }[] };
 
+  // Filtro por rol — nunca llega al cliente la condición oculta para su
+  // rol, no es solo un "no se muestra" en pantalla.
+  const visiblePriceConditions = (priceConditions ?? [])
+    .filter((c) => isPriceConditionVisibleForRole(c, profile.role))
+    .map(({ id, code, name, rule_type, priority }) => ({ id, code, name, rule_type, priority }));
+
   return (
     <div className="flex flex-col gap-4 p-4 md:p-6">
       <div>
@@ -75,7 +83,7 @@ export default async function PreciosPage() {
 
       <PreciosView
         products={products ?? []}
-        priceConditions={priceConditions ?? []}
+        priceConditions={visiblePriceConditions}
         productPrices={productPrices ?? []}
         promotions={promotions ?? []}
         promotionProducts={promotionProducts ?? []}

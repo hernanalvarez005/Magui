@@ -56,40 +56,13 @@ export function PriceConditionsTable({
   const [activatingAuto, setActivatingAuto] = useState<PriceConditionRow | null>(null);
   const rows = conditions.map((c) => ({ ...c, ...overrides[c.id] }));
 
-  // Toggle rápido de "Activa" sin abrir el formulario — pasa igual por la
-  // RPC atómica (nunca un update directo a price_conditions/payment_methods
-  // por separado, ver comentario de cabecera de update_price_condition en
-  // 20260201000070_update_price_condition.sql: quedarían desincronizadas).
-  async function toggleActive(row: PriceConditionRow, active: boolean) {
-    if (!active && !window.confirm(`¿Desactivar "${row.name}"? Deja de ofrecerse en ventas nuevas (nunca se borra, ni afecta ventas ya hechas).`)) {
-      return;
-    }
-    setSavingId(row.id);
-    const supabase = createClient();
-    const { error } = await supabase.rpc("update_price_condition", {
-      p_price_condition_id: row.id,
-      p_name: row.name,
-      p_discount_percent: row.discount_percent ? Number(row.discount_percent) : 0,
-      p_requires_billing: row.requires_billing,
-      p_priority: row.priority,
-      p_active: active,
-      p_location_codes: row.location_codes,
-      p_available_web: row.available_web,
-    });
-    setSavingId(null);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    setOverrides((prev) => ({ ...prev, [row.id]: { ...prev[row.id], active } }));
-    router.refresh();
-  }
-
-  // Toggle rápido de "Visible en Precios" — eje independiente de "Activa"
-  // (migración 73): ocultarla de /precios nunca la desactiva para la venta.
+  // Toggle rápido de "Visible para vendedoras" — eje independiente de
+  // "Activa" (migración 73): ocultarla de /precios nunca la desactiva para
+  // la venta. Define si esta condición aparece en la consulta de Precios
+  // de las vendedoras — Administración siempre puede verla ahí.
   // p_visible_in_price_lookup es la única novedad acá; el resto de los
-  // parámetros de la RPC siguen siendo reemplazo completo (igual que
-  // toggleActive), así que se manda el valor actual de cada uno tal cual.
+  // parámetros de la RPC siguen siendo reemplazo completo, así que se
+  // manda el valor actual de cada uno tal cual.
   async function toggleVisibility(row: PriceConditionRow, visible: boolean) {
     setSavingId(row.id);
     const supabase = createClient();
@@ -131,8 +104,7 @@ export function PriceConditionsTable({
           <TableHeader>
             <TableRow>
               <TableHead>Condición</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead>Visible en Precios</TableHead>
+              <TableHead>Visible para vendedoras</TableHead>
               <TableHead className="text-right">Ajuste</TableHead>
               <TableHead>Requiere facturación</TableHead>
               <TableHead>Disponibilidad</TableHead>
@@ -151,23 +123,13 @@ export function PriceConditionsTable({
                     {c.is_base ? <p className="text-xs text-muted-foreground">Precio de referencia — siempre disponible, no editable acá.</p> : null}
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        checked={c.active}
-                        disabled={c.is_base || savingId === c.id}
-                        onCheckedChange={(v) => toggleActive(c, v)}
-                      />
-                      <Badge variant={c.active ? "success" : "warning"}>{c.active ? "Activa" : "Desactivada"}</Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell>
                     {/* BASE (Lista) nunca ofrece el control — siempre visible
-                        en /precios, sin importar la columna (ver migración
-                        73 y app/(app)/precios/page.tsx). Para el resto, el
-                        toggle es explícito acá — no solo escondido en el
-                        formulario de edición — para que Administración vea
-                        de un vistazo que "Activa" y "Visible en Precios" son
-                        dos ejes independientes. */}
+                        en /precios para cualquier rol, sin importar la
+                        columna (ver migración 73 y app/(app)/precios/page.tsx,
+                        lib/pricing/price-lookup-visibility.ts). Define si
+                        esta condición aparece en la consulta de Precios de
+                        las vendedoras — Administración siempre puede verla
+                        ahí, sin importar este valor. */}
                     {c.is_base ? (
                       <Badge variant="secondary">Siempre</Badge>
                     ) : (
@@ -232,7 +194,7 @@ export function PriceConditionsTable({
               ))}
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="py-6 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={7} className="py-6 text-center text-sm text-muted-foreground">
                   Todavía no hay condiciones de precio cargadas.
                 </TableCell>
               </TableRow>
