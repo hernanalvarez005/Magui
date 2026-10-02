@@ -394,11 +394,11 @@ export function PriceMatrix({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="sticky left-0 bg-card">Producto</TableHead>
+              <TableHead className="sticky left-0 w-56 max-w-56 bg-card">Producto</TableHead>
               {conditions.map((c) => (
-                <TableHead key={c.id} className="px-2 text-right align-top">
+                <TableHead key={c.id} className="w-24 max-w-24 px-1.5 text-right align-top">
                   <div className="flex flex-col items-end gap-1">
-                    <span>{c.name}</span>
+                    <span className="whitespace-normal break-words leading-tight">{c.name}</span>
                     {/* % informativo dentro del propio encabezado de la
                         condición — toda condición PAYMENT_METHOD puede
                         configurarlo (isDiscountConfigurable), nunca un
@@ -427,7 +427,7 @@ export function PriceMatrix({
           <TableBody>
             {products.map((product) => (
               <TableRow key={product.id}>
-                <TableCell className="sticky left-0 bg-card font-medium">
+                <TableCell className="sticky left-0 w-56 max-w-56 whitespace-normal break-words bg-card font-medium">
                   {product.name}
                   {!product.active ? (
                     <Badge variant="outline" className="ml-2">
@@ -444,12 +444,12 @@ export function PriceMatrix({
                   // para la lógica funcional (preview/ripple), que no cambia.
                   const showManualBadge = manuallyTouched.has(cellKey(product.id, c.id));
                   return (
-                    <TableCell key={c.id} className="px-2 text-right">
+                    <TableCell key={c.id} className="px-1.5 text-right">
                       <div className="ml-auto flex w-24 flex-col items-end gap-0.5">
                         <Input
                           type="number"
                           className={cn(
-                            "h-8 w-24 px-2 text-right",
+                            "h-8 w-24 px-1.5 text-right",
                             isDirty(product.id, c.id) && "border-primary ring-1 ring-primary",
                             showManualBadge && "border-amber-500"
                           )}
