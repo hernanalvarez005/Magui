@@ -13,10 +13,15 @@
 --   K. Transición % no-nulo -> NULL (cierra AUTO, preserva MANUAL) y NULL -> %.
 --   L. Reactivación (active false->true) sincroniza AUTO.
 --   M. QUANTITY nunca participa.
+--   O. Borrado de un precio puntual (p_clears).
+--   P. Borrar Precio de Lista cierra TODOS los AUTO dependientes; recargar
+--      Lista los regenera; MANUAL siempre intacto.
+--   Q. Lista y % cambian juntos en el mismo guardado — AUTO usa ambos
+--      valores nuevos.
 --   N. Helper interno fn_recalculate_auto_prices no ejecutable por PUBLIC/anon/authenticated.
 -- Correr con: rebuild local (preamble + seed_026_skus) + pg_prove.
 begin;
-select plan(40);
+select plan(50);
 
 -- ---------------------------------------------------------------------------
 -- A. Backfill: todo lo que ya existía (seed_data + cualquier fixture de
@@ -563,6 +568,126 @@ select is(
        and price_condition_id = (select id from price_conditions where code = 'APR-PC15') and active = true),
   0,
   'O1: p_clears cierra la vigencia activa sin insertar ninguna fila nueva (nunca $0)'
+);
+
+-- ---------------------------------------------------------------------------
+-- P. Borrar Precio de Lista (p_clears sobre BASE) cierra TODOS los AUTO
+-- dependientes del producto — nunca puede quedar un AUTO vendible derivado
+-- de una Lista inexistente. Preserva MANUAL. Recargar Lista los regenera
+-- (vía la misma cascada del paso 3, sin lógica paralela).
+-- ---------------------------------------------------------------------------
+insert into public.products (sku, name, product_type, category, track_stock, commissionable, promo_eligible, active)
+values ('APR-CLR', 'Auto precio clear', 'product', 'Test', true, true, true, true);
+
+insert into public.payment_methods (code, name, active, requires_billing, sort_order)
+values ('APR-PMMANUAL', 'Medio manual de prueba', true, false, 997);
+insert into public.price_conditions (code, name, rule_type, payment_method_id, discount_percent, priority, combinable, active)
+values (
+  'APR-PCMANUAL', 'Condición manual de prueba', 'PAYMENT_METHOD',
+  (select id from payment_methods where code = 'APR-PMMANUAL'), 0.10, 51, false, true
+);
+
+select save_price_matrix_changes(
+  p_list_price_changes := jsonb_build_array(jsonb_build_object(
+    'product_id', (select id from products where sku = 'APR-CLR'), 'amount', 200000
+  ))
+);
+select is(
+  (select amount from product_prices where product_id = (select id from products where sku = 'APR-CLR')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PC15') and active = true),
+  140000::numeric,
+  'P1: setup — APR-CLR Lista $200.000 genera AUTO (condición A, APR-PC15 30%) = $140.000'
+);
+select is(
+  (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-CLR')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCFUTURA') and active = true),
+  'AUTO',
+  'P2: setup — APR-CLR también AUTO bajo condición B (APR-PCFUTURA)'
+);
+
+select save_price_matrix_changes(
+  p_manual_overrides := jsonb_build_array(jsonb_build_object(
+    'product_id', (select id from products where sku = 'APR-CLR'),
+    'price_condition_id', (select id from price_conditions where code = 'APR-PCMANUAL'),
+    'amount', 55555
+  ))
+);
+select is(
+  (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-CLR')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCMANUAL') and active = true),
+  'MANUAL',
+  'P3: setup — APR-CLR MANUAL ($55.555) bajo condición C (APR-PCMANUAL)'
+);
+
+-- Borrar Precio de Lista.
+select save_price_matrix_changes(
+  p_clears := jsonb_build_array(jsonb_build_object(
+    'product_id', (select id from products where sku = 'APR-CLR'),
+    'price_condition_id', (select id from price_conditions where rule_type = 'BASE')
+  ))
+);
+select is(
+  (select count(*)::int from product_prices
+     where product_id = (select id from products where sku = 'APR-CLR')
+       and price_condition_id = (select id from price_conditions where rule_type = 'BASE') and active = true),
+  0,
+  'P4: Lista deja de estar vigente para APR-CLR'
+);
+select is(
+  (select count(*)::int from product_prices
+     where product_id = (select id from products where sku = 'APR-CLR') and pricing_mode = 'AUTO' and active = true),
+  0,
+  'P5: TODOS los AUTO de APR-CLR (condiciones A y B, cualquier condición) dejan de estar vigentes — ninguno vendible derivado de una Lista inexistente'
+);
+select is(
+  (select amount from product_prices where product_id = (select id from products where sku = 'APR-CLR')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCMANUAL') and active = true),
+  55555::numeric,
+  'P6: el MANUAL de APR-CLR (condición C) permanece intacto'
+);
+
+-- Volver a cargar Precio Lista.
+select save_price_matrix_changes(
+  p_list_price_changes := jsonb_build_array(jsonb_build_object(
+    'product_id', (select id from products where sku = 'APR-CLR'), 'amount', 300000
+  ))
+);
+select is(
+  (select amount from product_prices where product_id = (select id from products where sku = 'APR-CLR')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PC15') and active = true),
+  210000::numeric,
+  'P7: recargar Lista ($300.000) regenera AUTO para la condición A (PAYMENT_METHOD activa con %) = $210.000'
+);
+select is(
+  (select pricing_mode from product_prices where product_id = (select id from products where sku = 'APR-CLR')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCFUTURA') and active = true),
+  'AUTO',
+  'P8: y también se regenera la condición B'
+);
+select is(
+  (select amount from product_prices where product_id = (select id from products where sku = 'APR-CLR')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PCMANUAL') and active = true),
+  55555::numeric,
+  'P9: y el MANUAL (condición C) sigue intacto después de recargar Lista'
+);
+
+-- ---------------------------------------------------------------------------
+-- Q. Lista y % cambian juntos en el mismo guardado — el AUTO final tiene
+-- que usar AMBOS valores nuevos, nunca uno nuevo y el otro anterior.
+-- ---------------------------------------------------------------------------
+select save_price_matrix_changes(
+  p_list_price_changes := jsonb_build_array(jsonb_build_object(
+    'product_id', (select id from products where sku = 'APR-CLR'), 'amount', 400000
+  )),
+  p_percent_changes := jsonb_build_array(jsonb_build_object(
+    'price_condition_id', (select id from price_conditions where code = 'APR-PC15'), 'discount_percent', 0.10
+  ))
+);
+select is(
+  (select amount from product_prices where product_id = (select id from products where sku = 'APR-CLR')
+     and price_condition_id = (select id from price_conditions where code = 'APR-PC15') and active = true),
+  360000::numeric,
+  'Q1: Lista $300.000->$400.000 y % 30%->10% en el MISMO guardado -> AUTO = $400.000 x 90% = $360.000 (ni $400.000x70%=$280.000 con el % viejo, ni $300.000x90%=$270.000 con la Lista vieja)'
 );
 
 -- ---------------------------------------------------------------------------

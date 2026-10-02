@@ -701,6 +701,18 @@ begin
       set valid_until = greatest(p_valid_from, valid_from + interval '1 microsecond'), active = false
       where product_id = v_product_id and price_condition_id = v_condition_id and active = true;
 
+    if v_condition_id = v_list_condition_id then
+      -- Borrar Lista deja sin base de cálculo a CUALQUIER AUTO de este
+      -- producto — no puede quedar vendible un AUTO derivado de una Lista
+      -- inexistente. Mismo mecanismo de cierre que el resto de la función
+      -- (greatest correlacionado por fila), nunca toca MANUAL. Al volver a
+      -- cargar Lista, el paso 3 (cascada) los recrea solo, sin lógica
+      -- paralela acá.
+      update public.product_prices
+        set valid_until = greatest(p_valid_from, valid_from + interval '1 microsecond'), active = false
+        where product_id = v_product_id and active = true and pricing_mode = 'AUTO';
+    end if;
+
     v_clear_count := v_clear_count + 1;
   end loop;
 

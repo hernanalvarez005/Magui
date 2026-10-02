@@ -30,6 +30,31 @@ describe("suggestDiscountedPrice — sugerencia de precio (Bloque E)", () => {
     expect(suggestDiscountedPrice(10000, 33)).toBe(6700);
     expect(suggestDiscountedPrice(999, 10)).toBe(899.1);
   });
+
+  // Paridad preview (frontend) <-> fn_recalculate_auto_prices (SQL,
+  // migración 74): round(lista * (1 - %), 2) en numeric de Postgres —
+  // decimal exacto, redondea mitades lejos de cero. Para montos siempre
+  // positivos (todo este dominio) coincide con Math.round de JS, que
+  // también redondea mitades hacia +Infinity = lejos de cero en positivos.
+  // Verificado empíricamente contra psql (round(numeric, 2)) para estos 4
+  // casos, incluido un empate exacto en el 3er decimal (123457 x 12.5% =
+  // 108024.875, redondea a .88 en ambos lados) — documentado acá en vez de
+  // cambiar la fórmula, porque ya son matemáticamente idénticos.
+  it("paridad con SQL: 100000 x 15% = 85000 (sin decimales, caso trivial)", () => {
+    expect(suggestDiscountedPrice(100000, 15)).toBe(85000);
+  });
+
+  it("paridad con SQL: 99999 x 15% = 84999.15", () => {
+    expect(suggestDiscountedPrice(99999, 15)).toBe(84999.15);
+  });
+
+  it("paridad con SQL: 123457 x 12.5% = 108024.88 (empate exacto en el 3er decimal, .875 -> redondea lejos de cero)", () => {
+    expect(suggestDiscountedPrice(123457, 12.5)).toBe(108024.88);
+  });
+
+  it("paridad con SQL: 87543 x 7.25% = 81196.13", () => {
+    expect(suggestDiscountedPrice(87543, 7.25)).toBe(81196.13);
+  });
 });
 
 // Checkpoint Precios — reemplaza SUGGESTABLE_CODES (allowlist hardcodeada
