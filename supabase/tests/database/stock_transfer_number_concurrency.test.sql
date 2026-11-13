@@ -44,6 +44,14 @@
 --      más alto de ese día, y la siguiente llamada a
 --      fn_next_transfer_number continúa en +1 -- nunca repite un número que
 --      ya existe en stock_transfers.
+--   8) stock_transfer_number_counters es estrictamente interna: RLS
+--      habilitada sin policies bloquea a authenticated por completo --
+--      SELECT no ve ninguna fila (aunque existan), INSERT lanza excepción,
+--      y un UPDATE/DELETE sin WHERE no modifica ni borra nada real (0 filas
+--      visibles). Sin esto, authenticated tendría DML amplio sobre esta
+--      tabla por los default privileges de la migración 010 y podría
+--      reintroducir la colisión de transfer_number manipulando el contador
+--      directo por la REST API.
 --
 -- (El grant hardening de fn_next_transfer_number -- PUBLIC/anon/authenticated
 -- sin EXECUTE -- se cubre junto con el resto de los helpers internos en
@@ -62,7 +70,7 @@
 --
 -- Correr con: scripts/rebuild_test_db.sh + pg_prove localmente.
 begin;
-select plan(23);
+select plan(28);
 
 insert into auth.users (id, email) values
   ('aa000000-0000-0000-0000-000000000077', 'admin.setup.stocktr@test.maguirejuve.com');
@@ -276,7 +284,60 @@ select is(
   'Caso 7b: la siguiente llamada post-backfill continúa en 0006 -- nunca repite 0001..0005, ya existentes en stock_transfers'
 );
 
+-- ===========================================================================
+-- Caso 8: stock_transfer_number_counters es estrictamente interna -- RLS
+-- habilitada sin policies bloquea lectura/escritura directa desde un
+-- cliente autenticado (mismo patrón ya probado en producción para
+-- sale_number_counters). Sin esto, authenticated tiene DML amplio sobre
+-- CUALQUIER tabla nueva de `public` por default privileges (migración 010)
+-- -- un cliente podría escribir el contador directo y reintroducir la
+-- colisión que esta migración vino a eliminar.
+-- ===========================================================================
+select is(
+  (select relrowsecurity from pg_class where relname = 'stock_transfer_number_counters'),
+  true,
+  'Caso 8a: stock_transfer_number_counters tiene RLS habilitada'
+);
+
+-- Ya hay filas reales (de los Casos 1-7, generadas como postgres/dueño) --
+-- confirma que existen antes de medir qué ve authenticated.
+select ok(
+  (select count(*) from stock_transfer_number_counters) > 0,
+  'Caso 8b (setup): existen filas reales en el contador (generadas en los casos anteriores)'
+);
+
 set role authenticated;
+
+select is(
+  (select count(*) from stock_transfer_number_counters),
+  0::bigint,
+  'Caso 8c: authenticated no VE ninguna fila del contador vía SELECT directo, aunque existan (RLS sin policy de SELECT)'
+);
+
+select throws_ok(
+  $$insert into stock_transfer_number_counters (day, last_seq) values ('2099-01-01', 999999)$$,
+  'Caso 8d: authenticated no puede INSERTAR directo en el contador (RLS sin policy de INSERT)'
+);
+
+-- UPDATE/DELETE sin policy de SELECT/USING no lanzan excepción -- Postgres
+-- simplemente no les deja VER ninguna fila para operar, así que afectan 0
+-- filas en silencio (UPDATE 0 / DELETE 0). Por eso la prueba real no es
+-- "lanza excepción" sino "el dato real queda intacto": sembramos una fila
+-- canario como dueño, intentamos pisarla/borrarla como authenticated, y
+-- confirmamos que sigue exactamente igual.
+reset role;
+insert into public.stock_transfer_number_counters (day, last_seq) values ('2097-01-01', 42);
+set role authenticated;
+
+update stock_transfer_number_counters set last_seq = 0;
+delete from stock_transfer_number_counters;
+
+reset role;
+select is(
+  (select last_seq from stock_transfer_number_counters where day = '2097-01-01'::date),
+  42,
+  'Caso 8e: un UPDATE/DELETE de authenticated (0 filas visibles por RLS) no modifica ni borra la fila canario -- queda intacta en 42'
+);
 
 select * from finish();
 rollback;

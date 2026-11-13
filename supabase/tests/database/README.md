@@ -1,7 +1,7 @@
-# pgTAP — baseline conocido: 86 "throws_ok compatibility artifacts"
+# pgTAP — baseline conocido: 87 "throws_ok compatibility artifacts"
 
 Al correr toda la suite (`pg_prove supabase/tests/database/*.sql`) van a
-aparecer **86 tests marcados como "failed" que NO son regresiones**. Es un
+aparecer **87 tests marcados como "failed" que NO son regresiones**. Es un
 artefacto de compatibilidad del runner local (pgTAP + Tap::Harness vía
 `pg_prove`), no un bug de la aplicación ni de las RPC. Antes de investigar
 cualquier "failed" nuevo, comparar contra esta lista — si coincide
@@ -63,7 +63,7 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `reversal_qty_guard_fix.test.sql` | 17, 21, 28 | 30 |
 | `rls.test.sql` | 3 | 7 |
 | `stock_available_transversal.test.sql` | 7, 9 | 10 |
-| `stock_transfer_number_concurrency.test.sql` | 17 | 23 |
+| `stock_transfer_number_concurrency.test.sql` | 17, 27 | 28 |
 | `three_for_two_historical_backfill.test.sql` | 1, 2, 3, 4 | 12 |
 | `viewer_role.test.sql` | 10, 11 | 12 |
 | `web_admin_delivery_bypass_and_stock_availability.test.sql` | 4, 9 | 11 |
@@ -73,7 +73,7 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `web_order_history.test.sql` | 14 | 18 |
 | `web_order_paid_method_change.test.sql` | 3, 5, 6 | 7 |
 
-Total: **86 de 972** tests reales de la suite completa (al día de la
+Total: **87 de 977** tests reales de la suite completa (al día de la
 migración 77, fix de colisión de `transfer_number` — ver `Origen`).
 El total de tests crece con cada archivo nuevo, la lista de "failed"
 conocidos no debería, salvo que se agregue un test nuevo que use la misma
@@ -289,21 +289,33 @@ Incluye backfill del contador: la migración siembra
 `stock_transfer_number_counters` con el correlativo real más alto de cada
 día que ya tenga transferencias (parseado del propio `transfer_number`),
 para que aplicarla sobre una base con historial nunca repita un número ya
-existente. Archivo nuevo `stock_transfer_number_concurrency.test.sql`, 23
-casos (incluye el backfill, Caso 7a/7b) — 1 `throws_ok` de 2 argumentos
-sobre un rechazo esperado (transferencia que excede el disponible, aun con
-idempotency_key), mismo patrón que el resto de la suite, +1 quirk nuevo.
+existente. La tabla además queda con RLS habilitada sin policies (mismo
+patrón que `sale_number_counters`) -- sin esto, `authenticated` tendría DML
+amplio sobre ella por los default privileges de la migración 010 y podría
+manipular el contador directo por la REST API, reintroduciendo la colisión.
+Todo el archivo de la migración corre dentro de un `BEGIN`/`COMMIT`
+explícito -- una falla a mitad de camino revierte absolutamente todo
+(verificado inyectando una falla forzada a propósito: tras el error, ni la
+tabla, ni la función, ni la columna, ni la redefinición de `transfer_stock`
+quedan aplicadas). Archivo nuevo `stock_transfer_number_concurrency.test.sql`,
+28 casos (incluye el backfill, Caso 7a/7b, y el RLS/permisos de la tabla,
+Caso 8a-8e) — 2 `throws_ok` de 2 argumentos sobre rechazos esperados
+(transferencia que excede el disponible, e INSERT directo bloqueado por
+RLS), mismo patrón que el resto de la suite, +2 quirks nuevos.
 `internal_functions_grant_hardening.test.sql` suma 3 casos más (grants de
 `fn_next_transfer_number`, mismo patrón que `fn_next_sale_number`), sin
-quirks nuevos — no usa `throws_ok`. 86/972 a partir de acá.
+quirks nuevos — no usa `throws_ok`. 87/977 a partir de acá.
 
-Nota sobre dos archivos no relacionados con este fix
-(`analytics.test.sql`, `web_payment_status_metrics.test.sql`) y un caso de
-`web_circuit_end_to_end_regression.test.sql` (test 42): al reconstruir la
-base de test desde cero en un ambiente nuevo, muestran más "failed" que los
-documentados arriba. Se verificó que esos "failed" adicionales **no son
-causados por la migración 077** — se reproducen idénticos en una base
-reconstruida hasta la migración 076 inclusive (sin 077 aplicada). No se
-investigó más a fondo por quedar fuera del alcance de este fix; quedan
-documentados acá para que no se confundan con una regresión de
-`transfer_stock`.
+Nota (histórica, ya no reproduce): en una corrida anterior de esta misma
+migración, `analytics.test.sql`, `web_payment_status_metrics.test.sql` y un
+caso de `web_circuit_end_to_end_regression.test.sql` (test 42) mostraron más
+"failed" que los documentados arriba, al reconstruir la base de test desde
+cero. Se verificó entonces que esos "failed" adicionales no eran causados
+por la migración 077 (se reproducían idénticos en una base reconstruida
+hasta la 076 inclusive, sin 077 aplicada). En la corrida final (con el
+backfill del contador y el RLS de `stock_transfer_number_counters` ya
+incorporados) los tres volvieron a coincidir exactamente con el baseline de
+esta tabla — parece haber sido un artefacto transitorio del ambiente de
+reconstrucción (posiblemente sensibilidad a la hora de corrida en reportes
+que bucketean por "hoy"), no una regresión real. Se deja la nota por si
+reaparece en una corrida futura.

@@ -60,7 +60,18 @@
 -- No se editan migraciones ya aplicadas (009/061) -- esta es incremental,
 -- hacia adelante. No se borra ni renumera ninguna transferencia existente
 -- -- el histórico queda intacto, se corrige solo hacia adelante.
+--
+-- Transaccionalidad: todo el archivo corre dentro de un único BEGIN/COMMIT
+-- explícito. Esto es necesario porque `psql -f` (y por extensión cualquier
+-- ejecución statement-por-statement) NO envuelve un archivo multi-statement
+-- en una transacción por sí solo -- cada statement hace autocommit salvo que
+-- el propio script lo pida. Con el BEGIN/COMMIT explícito, si cualquier
+-- statement de acá abajo falla, TODO se revierte (tabla, función, columna,
+-- backfill, DROP+CREATE de transfer_stock, grants) -- no queda ningún
+-- cambio parcial, sin importar con qué herramienta se corra (psql -f,
+-- Supabase CLI, o pegado entero en el SQL Editor).
 -- =============================================================================
+begin;
 
 -- ---------------------------------------------------------------------------
 -- 1) Contador atómico de transfer_number, mismo patrón que sale_number_counters.
@@ -72,6 +83,21 @@ create table public.stock_transfer_number_counters (
 
 comment on table public.stock_transfer_number_counters is
   'Soporte interno de fn_next_transfer_number(). No se expone a la API pública.';
+
+-- RLS sin policies, mismo patrón ya probado en producción para
+-- sale_number_counters (migración 010): en este esquema, TODA tabla nueva en
+-- `public` hereda automáticamente privilegios DML amplios para `authenticated`
+-- vía `alter default privileges in schema public grant ... to authenticated`
+-- (migración 010, ya aplicada) -- sin esto, cualquier cliente autenticado
+-- podría leer/insertar/modificar/eliminar filas de este contador DIRECTO por
+-- la REST API, sin pasar por fn_next_transfer_number. Habilitar RLS sin
+-- ninguna policy bloquea esas 4 operaciones por completo para
+-- authenticated/anon (RLS habilitada + cero policies = deniega todo).
+-- fn_next_transfer_number sigue funcionando: corre SECURITY DEFINER como el
+-- dueño de la función (el rol `postgres`, que en Supabase tiene BYPASSRLS),
+-- no como `authenticated` -- RLS nunca lo afecta, exactamente como ya pasa
+-- hoy con fn_next_sale_number y sale_number_counters.
+alter table public.stock_transfer_number_counters enable row level security;
 
 -- Backfill: esta migración puede aplicarse sobre una base de producción que
 -- YA tiene transferencias históricas (generadas con el mecanismo viejo,
@@ -302,3 +328,5 @@ revoke execute on function public.transfer_stock(uuid, uuid, jsonb, text, uuid)
   from public, anon;
 grant execute on function public.transfer_stock(uuid, uuid, jsonb, text, uuid)
   to authenticated;
+
+commit;
