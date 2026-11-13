@@ -1,7 +1,7 @@
-# pgTAP — baseline conocido: 85 "throws_ok compatibility artifacts"
+# pgTAP — baseline conocido: 86 "throws_ok compatibility artifacts"
 
 Al correr toda la suite (`pg_prove supabase/tests/database/*.sql`) van a
-aparecer **85 tests marcados como "failed" que NO son regresiones**. Es un
+aparecer **86 tests marcados como "failed" que NO son regresiones**. Es un
 artefacto de compatibilidad del runner local (pgTAP + Tap::Harness vía
 `pg_prove`), no un bug de la aplicación ni de las RPC. Antes de investigar
 cualquier "failed" nuevo, comparar contra esta lista — si coincide
@@ -63,6 +63,7 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `reversal_qty_guard_fix.test.sql` | 17, 21, 28 | 30 |
 | `rls.test.sql` | 3 | 7 |
 | `stock_available_transversal.test.sql` | 7, 9 | 10 |
+| `stock_transfer_number_concurrency.test.sql` | 17 | 21 |
 | `three_for_two_historical_backfill.test.sql` | 1, 2, 3, 4 | 12 |
 | `viewer_role.test.sql` | 10, 11 | 12 |
 | `web_admin_delivery_bypass_and_stock_availability.test.sql` | 4, 9 | 11 |
@@ -72,8 +73,8 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `web_order_history.test.sql` | 14 | 18 |
 | `web_order_paid_method_change.test.sql` | 3, 5, 6 | 7 |
 
-Total: **85 de 946** tests reales de la suite completa (al día de la
-migración 76, fix de Lista pisando MANUAL — ver `Origen`).
+Total: **86 de 970** tests reales de la suite completa (al día de la
+migración 77, fix de colisión de `transfer_number` — ver `Origen`).
 El total de tests crece con cada archivo nuevo, la lista de "failed"
 conocidos no debería, salvo que se agregue un test nuevo que use la misma
 forma de 2 argumentos con una excepción real esperada;
@@ -276,4 +277,29 @@ histórica (fila MANUAL vieja cerrada, nunca pisada; fila AUTO nueva con id
 distinto; venta histórica intacta) — ninguno usa `throws_ok`, no agrega
 quirks. El 3er quirk del archivo (antes test 81, el helper interno no
 ejecutable directamente) se renumera a 115 por el crecimiento del archivo,
-mismo caso. 85/946 a partir de acá.
+mismo caso. 85/946 a partir de acá. Actualizado una vez más con el fix de
+producción de la colisión de `transfer_number`
+(`20260201000077_transfer_number_concurrency_and_idempotency.sql` —
+`fn_next_transfer_number()`, contador atómico por día con el mismo patrón
+que `fn_next_sale_number`, elimina el desajuste de huso horario entre el
+string formateado y el conteo que causaba la colisión real; columna
+`idempotency_key` aditiva en `stock_transfers`; `transfer_stock` redefinida
+vía `DROP FUNCTION` + `CREATE` con el parámetro nuevo `p_idempotency_key`).
+Archivo nuevo `stock_transfer_number_concurrency.test.sql`, 21 casos — 1
+`throws_ok` de 2 argumentos sobre un rechazo esperado (transferencia que
+excede el disponible, aun con idempotency_key), mismo patrón que el resto
+de la suite, +1 quirk nuevo. `internal_functions_grant_hardening.test.sql`
+suma 3 casos más (grants de `fn_next_transfer_number`, mismo patrón que
+`fn_next_sale_number`), sin quirks nuevos — no usa `throws_ok`. 86/970 a
+partir de acá.
+
+Nota sobre dos archivos no relacionados con este fix
+(`analytics.test.sql`, `web_payment_status_metrics.test.sql`) y un caso de
+`web_circuit_end_to_end_regression.test.sql` (test 42): al reconstruir la
+base de test desde cero en un ambiente nuevo, muestran más "failed" que los
+documentados arriba. Se verificó que esos "failed" adicionales **no son
+causados por la migración 077** — se reproducen idénticos en una base
+reconstruida hasta la migración 076 inclusive (sin 077 aplicada). No se
+investigó más a fondo por quedar fuera del alcance de este fix; quedan
+documentados acá para que no se confundan con una regresión de
+`transfer_stock`.

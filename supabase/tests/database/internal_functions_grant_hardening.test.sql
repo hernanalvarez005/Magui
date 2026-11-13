@@ -1,21 +1,24 @@
--- pgTAP: Checkpoint reproducibilidad — grants de las 5 funciones "internas"
+-- pgTAP: Checkpoint reproducibilidad — grants de las funciones "internas"
 -- (create_web_order + fn_create_sale_core/fn_apply_stock_movement/
--- fn_next_sale_number/fn_pricing_quote) tras la migración 072.
+-- fn_next_sale_number/fn_pricing_quote) tras la migración 072. Ampliado en la
+-- migración 077 con fn_next_transfer_number (mismo patrón que
+-- fn_next_sale_number, helper interno de numeración de transferencias).
 --
--- No valida que 072 CONTENGA ciertos REVOKE (eso es leer el archivo) — valida
--- el estado EFECTIVO de PostgreSQL vía has_function_privilege(), sobre una
--- base reconstruida desde cero con TODO el historial de migraciones
--- (001..072), tal como haría cualquier instalación nueva o `supabase db push`
--- contra un proyecto vacío.
+-- No valida que 072/077 CONTENGAN ciertos REVOKE (eso es leer el archivo) —
+-- valida el estado EFECTIVO de PostgreSQL vía has_function_privilege(), sobre
+-- una base reconstruida desde cero con TODO el historial de migraciones,
+-- tal como haría cualquier instalación nueva o `supabase db push` contra un
+-- proyecto vacío.
 --
--- Contexto: ninguna de las 5 tenía, antes de 072, una combinación de REVOKE
--- que garantizara este estado de forma reproducible desde el repo — ver el
--- comentario en la propia migración 072 para el detalle de por qué.
+-- Contexto: ninguna de las originales tenía, antes de 072, una combinación
+-- de REVOKE que garantizara este estado de forma reproducible desde el repo
+-- — ver el comentario en la propia migración 072 para el detalle de por qué.
+-- fn_next_transfer_number nace ya con el REVOKE explícito en 077.
 --
 -- Correr con: scripts/rebuild_test_db.sh + pg_prove localmente.
 
 begin;
-select plan(16);
+select plan(19);
 
 -- ---------------------------------------------------------------------------
 -- create_web_order: única de las 5 que SÍ debe quedar ejecutable — pero
@@ -100,6 +103,26 @@ select is(
   has_function_privilege('authenticated', 'public.fn_next_sale_number(uuid, timestamptz)', 'execute'),
   false,
   'fn_next_sale_number: authenticated sin EXECUTE'
+);
+
+-- ---------------------------------------------------------------------------
+-- fn_next_transfer_number: helper interno de numeración de transferencias
+-- (migración 077, mismo patrón que fn_next_sale_number).
+-- ---------------------------------------------------------------------------
+select is(
+  has_function_privilege('public', 'public.fn_next_transfer_number(timestamptz)', 'execute'),
+  false,
+  'fn_next_transfer_number: PUBLIC sin EXECUTE'
+);
+select is(
+  has_function_privilege('anon', 'public.fn_next_transfer_number(timestamptz)', 'execute'),
+  false,
+  'fn_next_transfer_number: anon sin EXECUTE'
+);
+select is(
+  has_function_privilege('authenticated', 'public.fn_next_transfer_number(timestamptz)', 'execute'),
+  false,
+  'fn_next_transfer_number: authenticated sin EXECUTE'
 );
 
 -- ---------------------------------------------------------------------------

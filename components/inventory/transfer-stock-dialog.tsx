@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRightLeft, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
@@ -45,9 +45,17 @@ export function TransferStockDialog({
   const [toLocationId, setToLocationId] = useState(locations[1]?.id ?? locations[0]?.id ?? "");
   const [items, setItems] = useState<TransferItem[]>([{ product_id: "", quantity: "" }]);
   const [loading, setLoading] = useState(false);
+  // Misma clave para todos los reintentos de este intento de envío (doble clic,
+  // timeout de red); se regenera solo cuando se abre un diálogo nuevo.
+  const idempotencyKeyRef = useRef(crypto.randomUUID());
 
   function updateItem(index: number, patch: Partial<TransferItem>) {
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)));
+  }
+
+  function handleOpenChange(next: boolean) {
+    if (next) idempotencyKeyRef.current = crypto.randomUUID();
+    setOpen(next);
   }
 
   async function handleSubmit() {
@@ -74,6 +82,7 @@ export function TransferStockDialog({
       p_to_location_id: parsed.data.to_location_id,
       p_items: parsed.data.items,
       p_notes: parsed.data.notes ?? null,
+      p_idempotency_key: idempotencyKeyRef.current,
     });
     setLoading(false);
 
@@ -83,13 +92,13 @@ export function TransferStockDialog({
     }
 
     toast.success("Transferencia registrada.");
-    setOpen(false);
+    handleOpenChange(false);
     setItems([{ product_id: "", quantity: "" }]);
     router.refresh();
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="outline">
           <ArrowRightLeft /> Transferir stock
