@@ -1137,8 +1137,9 @@ export type Database = {
           p_to_location_id: string;
           p_items: { product_id: string; quantity: number }[];
           p_notes?: string | null;
+          p_idempotency_key?: string | null;
         };
-        Returns: { transfer_id: string; transfer_number: string };
+        Returns: { transfer_id: string; transfer_number: string; idempotent_replay?: boolean };
       };
       adjust_stock: {
         Args: {
