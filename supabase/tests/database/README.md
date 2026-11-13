@@ -63,7 +63,7 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `reversal_qty_guard_fix.test.sql` | 17, 21, 28 | 30 |
 | `rls.test.sql` | 3 | 7 |
 | `stock_available_transversal.test.sql` | 7, 9 | 10 |
-| `stock_transfer_number_concurrency.test.sql` | 17 | 21 |
+| `stock_transfer_number_concurrency.test.sql` | 17 | 23 |
 | `three_for_two_historical_backfill.test.sql` | 1, 2, 3, 4 | 12 |
 | `viewer_role.test.sql` | 10, 11 | 12 |
 | `web_admin_delivery_bypass_and_stock_availability.test.sql` | 4, 9 | 11 |
@@ -73,7 +73,7 @@ algunos archivos y no en otros generaría inconsistencia sin beneficio real
 | `web_order_history.test.sql` | 14 | 18 |
 | `web_order_paid_method_change.test.sql` | 3, 5, 6 | 7 |
 
-Total: **86 de 970** tests reales de la suite completa (al día de la
+Total: **86 de 972** tests reales de la suite completa (al día de la
 migración 77, fix de colisión de `transfer_number` — ver `Origen`).
 El total de tests crece con cada archivo nuevo, la lista de "failed"
 conocidos no debería, salvo que se agregue un test nuevo que use la misma
@@ -285,13 +285,17 @@ que `fn_next_sale_number`, elimina el desajuste de huso horario entre el
 string formateado y el conteo que causaba la colisión real; columna
 `idempotency_key` aditiva en `stock_transfers`; `transfer_stock` redefinida
 vía `DROP FUNCTION` + `CREATE` con el parámetro nuevo `p_idempotency_key`).
-Archivo nuevo `stock_transfer_number_concurrency.test.sql`, 21 casos — 1
-`throws_ok` de 2 argumentos sobre un rechazo esperado (transferencia que
-excede el disponible, aun con idempotency_key), mismo patrón que el resto
-de la suite, +1 quirk nuevo. `internal_functions_grant_hardening.test.sql`
-suma 3 casos más (grants de `fn_next_transfer_number`, mismo patrón que
-`fn_next_sale_number`), sin quirks nuevos — no usa `throws_ok`. 86/970 a
-partir de acá.
+Incluye backfill del contador: la migración siembra
+`stock_transfer_number_counters` con el correlativo real más alto de cada
+día que ya tenga transferencias (parseado del propio `transfer_number`),
+para que aplicarla sobre una base con historial nunca repita un número ya
+existente. Archivo nuevo `stock_transfer_number_concurrency.test.sql`, 23
+casos (incluye el backfill, Caso 7a/7b) — 1 `throws_ok` de 2 argumentos
+sobre un rechazo esperado (transferencia que excede el disponible, aun con
+idempotency_key), mismo patrón que el resto de la suite, +1 quirk nuevo.
+`internal_functions_grant_hardening.test.sql` suma 3 casos más (grants de
+`fn_next_transfer_number`, mismo patrón que `fn_next_sale_number`), sin
+quirks nuevos — no usa `throws_ok`. 86/972 a partir de acá.
 
 Nota sobre dos archivos no relacionados con este fix
 (`analytics.test.sql`, `web_payment_status_metrics.test.sql`) y un caso de

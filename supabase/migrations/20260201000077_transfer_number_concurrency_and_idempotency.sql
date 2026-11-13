@@ -73,6 +73,28 @@ create table public.stock_transfer_number_counters (
 comment on table public.stock_transfer_number_counters is
   'Soporte interno de fn_next_transfer_number(). No se expone a la API pública.';
 
+-- Backfill: esta migración puede aplicarse sobre una base de producción que
+-- YA tiene transferencias históricas (generadas con el mecanismo viejo,
+-- count(*)+advisory lock). Si el contador arrancara en 0 para cada día, el
+-- primer llamado después de la migración recalcularía el mismo
+-- transfer_number que una fila ya existente de ESE día (ej. si hoy ya hay
+-- 3 transferencias TRF-<hoy>-0001..0003, sin este backfill la primera
+-- llamada post-migración devolvería TRF-<hoy>-0001 de nuevo -- exactamente
+-- el error que esta migración vino a eliminar, aunque sea una sola vez).
+-- Semilla cada día que ya tiene transferencias con su correlativo real más
+-- alto, parseado del propio transfer_number (formato TRF-YYYYMMDD-NNNN) --
+-- así el próximo llamado para ese día continúa en +1, nunca repite. No
+-- toca ninguna fila de stock_transfers, solo puebla el contador.
+insert into public.stock_transfer_number_counters (day, last_seq)
+select
+  to_date(substring(st.transfer_number from 5 for 8), 'YYYYMMDD'),
+  max(substring(st.transfer_number from 14 for 4)::int)
+from public.stock_transfers st
+where st.transfer_number ~ '^TRF-\d{8}-\d{4}$'
+group by 1
+on conflict (day) do update
+  set last_seq = greatest(public.stock_transfer_number_counters.last_seq, excluded.last_seq);
+
 create or replace function public.fn_next_transfer_number(p_at timestamptz)
 returns text
 language plpgsql

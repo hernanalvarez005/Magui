@@ -36,6 +36,14 @@
 --      altera inventory_balances/stock_transfers/stock_movements, y la
 --      clave queda libre -- un reintento posterior con la MISMA clave y una
 --      cantidad válida sí se confirma (la falla no "quema" la idempotencia).
+--   7) Backfill del contador (el mismo INSERT ... ON CONFLICT ... DO UPDATE
+--      de la migración 077, replicado acá tal cual) sobre una fila
+--      histórica sintética (simula producción, donde ya existen
+--      transferencias generadas con el mecanismo viejo antes de que esta
+--      migración corra): el contador queda sembrado con el correlativo real
+--      más alto de ese día, y la siguiente llamada a
+--      fn_next_transfer_number continúa en +1 -- nunca repite un número que
+--      ya existe en stock_transfers.
 --
 -- (El grant hardening de fn_next_transfer_number -- PUBLIC/anon/authenticated
 -- sin EXECUTE -- se cubre junto con el resto de los helpers internos en
@@ -54,7 +62,7 @@
 --
 -- Correr con: scripts/rebuild_test_db.sh + pg_prove localmente.
 begin;
-select plan(21);
+select plan(23);
 
 insert into auth.users (id, email) values
   ('aa000000-0000-0000-0000-000000000077', 'admin.setup.stocktr@test.maguirejuve.com');
@@ -232,6 +240,43 @@ select lives_ok(
   ),
   'Caso 6e: la MISMA idempotency_key de un intento fallido queda libre -- un reintento válido después se confirma normalmente'
 );
+
+-- ===========================================================================
+-- Caso 7: backfill del contador sobre historial preexistente (simula
+-- aplicar esta migración en producción, donde ya hay transferencias
+-- generadas con el mecanismo viejo). Inserta una fila histórica SINTÉTICA
+-- directo en stock_transfers (bypassea transfer_stock a propósito -- es
+-- la única forma de simular "esto ya existía antes de la migración 077").
+-- ===========================================================================
+reset role;
+
+insert into public.stock_transfers (transfer_number, from_location_id, to_location_id, notes, created_by)
+values ('TRF-20270101-0005', :'sed25_id'::uuid, :'sed37_id'::uuid, 'Histórica sintética (test backfill)', 'aa000000-0000-0000-0000-000000000077');
+
+-- Mismo INSERT ... ON CONFLICT ... DO UPDATE de la migración 077, replicado
+-- tal cual (no se puede re-ejecutar la migración en sí dentro del test).
+insert into public.stock_transfer_number_counters (day, last_seq)
+select
+  to_date(substring(st.transfer_number from 5 for 8), 'YYYYMMDD'),
+  max(substring(st.transfer_number from 14 for 4)::int)
+from public.stock_transfers st
+where st.transfer_number ~ '^TRF-\d{8}-\d{4}$'
+group by 1
+on conflict (day) do update
+  set last_seq = greatest(public.stock_transfer_number_counters.last_seq, excluded.last_seq);
+
+select is(
+  (select last_seq from stock_transfer_number_counters where day = '2027-01-01'::date),
+  5,
+  'Caso 7a: el backfill siembra el contador con el correlativo real más alto de ese día (5), no con 0'
+);
+select is(
+  fn_next_transfer_number('2027-01-01 12:00:00-03'::timestamptz),
+  'TRF-20270101-0006',
+  'Caso 7b: la siguiente llamada post-backfill continúa en 0006 -- nunca repite 0001..0005, ya existentes en stock_transfers'
+);
+
+set role authenticated;
 
 select * from finish();
 rollback;
